@@ -11,11 +11,12 @@ import random
 import argparse
 from eval.evaluator import *
 from utils.tools import *
-from tensorboardX import SummaryWriter
+#from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 import config.yolov4_config as cfg
 from utils import cosine_lr_scheduler
 from utils.log import Logger
-from apex import amp
+
 from eval_coco import *
 from eval.cocoapi_evaluator import COCOAPIEvaluator
 
@@ -139,7 +140,7 @@ class Trainer(object):
                 # Update running mean of tracked metrics
                 loss_items = torch.tensor([loss_ciou, loss_conf, loss_cls, loss])
                 mloss = (mloss * i + loss_items) / (i + 1)
-
+                # len(self.train_dataloader) / (cfg.TRAIN["BATCH_SIZE"]) * epoch + iter
                 # Print batch results
                 if i % 10 == 0:
 
@@ -147,16 +148,17 @@ class Trainer(object):
                         epoch, self.epochs,i, len(self.train_dataloader) - 1, self.train_dataset.img_size,mloss[3], mloss[0], mloss[1],mloss[2],self.optimizer.param_groups[0]['lr']
                     ))
                     writer.add_scalar('loss_ciou', mloss[0],
-                                      len(self.train_dataloader) / (cfg.TRAIN["BATCH_SIZE"]) * epoch + i)
+                                      len(self.train_dataloader) * epoch + i)
                     writer.add_scalar('loss_conf', mloss[1],
-                                      len(self.train_dataloader) / (cfg.TRAIN["BATCH_SIZE"]) * epoch + i)
+                                      len(self.train_dataloader) * epoch + i)
                     writer.add_scalar('loss_cls', mloss[2],
-                                      len(self.train_dataloader) / (cfg.TRAIN["BATCH_SIZE"]) * epoch + i)
+                                      len(self.train_dataloader) * epoch + i)
                     writer.add_scalar('train_loss', mloss[3],
-                                      len(self.train_dataloader) / (cfg.TRAIN["BATCH_SIZE"]) * epoch + i)
+                                      len(self.train_dataloader) * epoch + i)
                 # multi-sclae training (320-608 pixels) every 10 batches
                 if self.multi_scale_train and (i+1) % 10 == 0:
                     self.train_dataset.img_size = random.choice(range(10, 20)) * 32
+
 
             if cfg.TRAIN["DATA_TYPE"] == 'VOC' or cfg.TRAIN["DATA_TYPE"] == 'Customer':
                 mAP = 0.
@@ -201,7 +203,7 @@ if __name__ == "__main__":
     parser.add_argument('--accumulate', type=int, default=2, help='batches to accumulate before optimizing')
     parser.add_argument('--fp_16', type=bool, default=False, help='whither to use fp16 precision')
     opt = parser.parse_args()
-    writer = SummaryWriter(logdir=opt.log_path + '/event')
+    writer = SummaryWriter(log_dir=opt.log_path + '/event')
     logger = Logger(log_file_name=opt.log_path + '/log.txt', log_level=logging.DEBUG, logger_name='YOLOv4').get_log()
 
     Trainer(weight_path=opt.weight_path,
