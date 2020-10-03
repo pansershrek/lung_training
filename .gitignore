@@ -7,3 +7,4 @@ weight/
 .vscode/
 dataset_link
 COCO/
+lightning_logs/

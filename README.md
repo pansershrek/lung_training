@@ -65,11 +65,11 @@ Please cite the article in your publications if it helps your research [MDPI Lin
 
 ---
 ## Install dependencies
-Run the installation script to install all the dependencies. You need to provide the conda install path (e.g. ~/anaconda3) and the name for the created conda environment (here ```YOLOv4-pytorch```).  
+Run the installation script to install all the dependencies. You need to provide the conda install path (e.g. ~/anaconda3) and the name for the created conda environment (here ```YOLOv4-pytorch```).
 ```bash
 pip3 install -r requirements.txt --user
 ```
-**Note:** The install script has been tested on an Ubuntu 18.04 and Window 10 system. In case of issues, check the [detailed installation instructions](INSTALL.md). 
+**Note:** The install script has been tested on an Ubuntu 18.04 and Window 10 system. In case of issues, check the [detailed installation instructions](INSTALL.md).
 
 ## Prepared work
 
@@ -90,9 +90,13 @@ Update the `"PROJECT_PATH"` in the config/yolov4_config.py.
   wget http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtrainval_06-Nov-2007.tar
   wget http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar
   # Extract the data.
-  tar -xvf VOCtrainval_11-May-2012.tar
-  tar -xvf VOCtrainval_06-Nov-2007.tar
-  tar -xvf VOCtest_06-Nov-2007.tar
+  mkdir VOCtrainval-2007
+  mkdir VOCtrainval-2012
+  mkdir VOCtest-2007
+  cd VOCtrainval-2012 && tar -xvf ../VOCtrainval_11-May-2012.tar && cd ../
+  cd VOCtrainval-2007 && tar -xvf ../VOCtrainval_06-Nov-2007.tar && cd ../
+  cd VOCtest-2007 && tar -xvf ../VOCtest_06-Nov-2007.tar && cd ../
+
   ```
 * Download links:{[VOC 2012_trainval](http://host.robots.ox.ac.uk/pascal/VOC/voc2012/VOCtrainval_11-May-2012.tar) 、[VOC 2007_trainval](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtrainval_06-Nov-2007.tar)、[VOC2007_test](http://host.robots.ox.ac.uk/pascal/VOC/voc2007/VOCtest_06-Nov-2007.tar)}、
 ### MSCOCO 2017
@@ -182,7 +186,7 @@ If you want to see the picture above, you should use follow commands:
 # To get ground truths of your dataset
 python3 utils/get_gt_txt.py
 # To plot P-R curve and calculate mean average precision
-python3 utils/get_map.py 
+python3 utils/get_map.py
 ```
 
 ## To evaluate （COCO）
@@ -224,7 +228,7 @@ The heatmaps can be seen in the `output/` like this:
 
 ![heatmaps](https://github.com/argusswift/YOLOv4-pytorch/blob/master/data/heatmap.jpg)
 ---
- 
+
 ## Reference
 
 * tensorflow : https://github.com/Stinky-Tofu/Stronger-yolo

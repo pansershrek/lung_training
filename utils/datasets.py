@@ -28,6 +28,7 @@ class Build_Dataset(Dataset):
         self.num_classes = len(self.classes)
         self.class_to_id = dict(zip(self.classes, range(self.num_classes)))
         self.__annotations = self.__load_annotations(anno_file_type)
+        self.anno_file_type = anno_file_type
 
     def __len__(self):
         return  len(self.__annotations)
@@ -35,16 +36,26 @@ class Build_Dataset(Dataset):
     def __getitem__(self, item):
         assert item <= len(self), 'index range error'
 
-        img_org, bboxes_org = self.__parse_annotation(self.__annotations[item])
-        img_org = img_org.transpose(2, 0, 1)  # HWC->CHW
+        
+        if self.anno_file_type == 'train':
+            img_org, bboxes_org, img_name = self.__parse_annotation(self.__annotations[item])
+            img_org, bboxes_org = self.__data_aug(img_org, bboxes_org)
+            img_org = img_org.transpose(2, 0, 1)  # HWC->CHW
+            
+            item_mix = random.randint(0, len(self.__annotations)-1)
+            img_mix, bboxes_mix, _ = self.__parse_annotation(self.__annotations[item_mix])
+            img_mix, bboxes_mix = self.__data_aug(img_mix, bboxes_mix)
+            img_mix = img_mix.transpose(2, 0, 1)
 
-        item_mix = random.randint(0, len(self.__annotations)-1)
-        img_mix, bboxes_mix = self.__parse_annotation(self.__annotations[item_mix])
-        img_mix = img_mix.transpose(2, 0, 1)
+            img, bboxes = dataAug.Mixup()(img_org, bboxes_org, img_mix, bboxes_mix)
+            del img_mix, bboxes_mix
+        else:
+            img_org, bboxes_org, img_name = self.__parse_annotation(self.__annotations[item])
+            img_org = img_org.transpose(2, 0, 1)
+            img = img_org
+            bboxes = bboxes_org
 
-
-        img, bboxes = dataAug.Mixup()(img_org, bboxes_org, img_mix, bboxes_mix)
-        del img_org, bboxes_org, img_mix, bboxes_mix
+        del img_org, bboxes_org
 
 
         label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self.__creat_label(bboxes)
@@ -57,7 +68,7 @@ class Build_Dataset(Dataset):
         mbboxes = torch.from_numpy(mbboxes).float()
         lbboxes = torch.from_numpy(lbboxes).float()
 
-        return img, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes
+        return img, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name
 
 
     def __load_annotations(self, anno_type):
@@ -84,7 +95,10 @@ class Build_Dataset(Dataset):
         assert img is not None, 'File Not Found ' + img_path
         bboxes = np.array([list(map(float, box.split(','))) for box in anno[1:]])
 
-        img, bboxes = dataAug.RandomHorizontalFilp()(np.copy(img), np.copy(bboxes), img_path)
+        return img, bboxes, img_path.split('/')[-1].strip('.jpg')
+
+    def __data_aug(self, img, bboxes):
+        img, bboxes = dataAug.RandomHorizontalFilp()(np.copy(img), np.copy(bboxes))
         img, bboxes = dataAug.RandomCrop()(np.copy(img), np.copy(bboxes))
         img, bboxes = dataAug.RandomAffine()(np.copy(img), np.copy(bboxes))
         img, bboxes = dataAug.Resize((self.img_size, self.img_size), True)(np.copy(img), np.copy(bboxes))
@@ -123,7 +137,10 @@ class Build_Dataset(Dataset):
         for bbox in bboxes:
             bbox_coor = bbox[:4]
             bbox_class_ind = int(bbox[4])
-            bbox_mix = bbox[5]
+            if len(bbox) >= 6:
+                bbox_mix = bbox[5]
+            else:
+                bbox_mix = None
 
             # onehot
             one_hot = np.zeros(self.num_classes, dtype=np.float32)

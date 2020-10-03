@@ -8,7 +8,7 @@ class RandomHorizontalFilp(object):
     def __init__(self, p=0.5):
         self.p = p
 
-    def __call__(self, img, bboxes, img_path):
+    def __call__(self, img, bboxes):
         if random.random() < self.p:
             _, w_img, _ = img.shape
             # img = np.fliplr(img)

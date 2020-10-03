@@ -22,7 +22,7 @@ class Evaluator(object):
         self.nms_thresh = cfg.VAL["NMS_THRESH"]
         self.val_shape = cfg.VAL["TEST_IMG_SIZE"]
         self.model = model
-        self.device = next(model.parameters()).device
+        self.device = 'cuda'#next(model.parameters()).device
         self.__visual_imgs = 0
         self.showatt = showatt
         self.inference_time = 0.
@@ -62,7 +62,24 @@ class Evaluator(object):
                 f.write("%s %s %s %s %s %s\n" % (class_name, score, str(xmin), str(ymin), str(xmax), str(ymax)))
             f.close()
         self.inference_time = 1.0 * self.inference_time / len(img_inds)
-        return self.__calc_APs(), self.inference_time
+        return self.calc_APs(), self.inference_time
+
+    def store_bbox(self, img_ind, bboxes_prd):
+        f = open("./output/detection-results/" + img_ind + ".txt", "w")
+        for bbox in bboxes_prd:
+            coor = np.array(bbox[:4], dtype=np.int32)
+            score = bbox[4]
+            class_ind = int(bbox[5])
+
+            class_name = self.classes[class_ind]
+            score = '%.4f' % score
+            xmin, ymin, xmax, ymax = map(str, coor)
+            s = ' '.join([img_ind, score, xmin, ymin, xmax, ymax]) + '\n'
+
+            with open(os.path.join(self.pred_result_path, 'comp4_det_test_' + class_name + '.txt'), 'a') as r:
+                r.write(s)
+            f.write("%s %s %s %s %s %s\n" % (class_name, score, str(xmin), str(ymin), str(xmax), str(ymax)))
+        f.close()
 
     def get_bbox(self, img, multi_test=False, flip_test=False):
         if multi_test:
@@ -152,8 +169,7 @@ class Evaluator(object):
 
         return bboxes
 
-
-    def __calc_APs(self, iou_thresh=0.5, use_07_metric=False):
+    def calc_APs(self, iou_thresh=0.5, use_07_metric=False):
         """
         Calculate ap values for each category
         :param iou_thresh:
@@ -162,8 +178,7 @@ class Evaluator(object):
         """
         filename = os.path.join(self.pred_result_path, 'comp4_det_test_{:s}.txt')
         cachedir = os.path.join(self.pred_result_path, 'cache')
-        # annopath = os.path.join(self.val_data_path, 'Annotations', '{:s}.xml')
-        annopath = os.path.join(self.val_data_path, 'Annotations\\' + '{:s}.xml')
+        annopath = os.path.join(self.val_data_path, 'Annotations', '{:s}.xml')
         imagesetfile = os.path.join(self.val_data_path,  'ImageSets', 'Main', 'test.txt')
         APs = {}
         Recalls = {}

@@ -49,6 +49,9 @@ class Build_Model(nn.Module):
         else:
             p, p_d = list(zip(*out))
             return p, torch.cat(p_d, 0)
+    
+    def getNC(self):
+        return self.__nC
 
 
 if __name__ == '__main__':

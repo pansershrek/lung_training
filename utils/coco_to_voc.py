@@ -11,7 +11,7 @@ from PIL import Image, ImageDraw
 savepath = "cocodata/xml/"
 img_dir = savepath + 'images/'
 anno_dir = savepath + 'Annotations/'
-datasets_list=['train2017', 'val2017', 'test2017']
+datasets_list=['train2014', 'val2014', 'test2014']
 
 classes_names = ['person',
 'bicycle',
@@ -94,7 +94,7 @@ classes_names = ['person',
 'hair drier',
 'toothbrush',]
 # Store annotations and train2014/val2014/... in this folder
-dataDir = 'E:\code\object_detection\yolov3-other-master\YOLOV3-master\cocodata/'
+dataDir = '/data/Hiola/YOLOv4-pytorch/dataset_link'
 
 headstr = """\
 <annotation>
