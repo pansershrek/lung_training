@@ -1,0 +1,9 @@
+output/
+py3/
+data/
+log/
+*.pyc
+weight/
+.vscode/
+dataset_link
+COCO/
