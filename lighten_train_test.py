@@ -23,6 +23,7 @@ if __name__ == '__main__':
     parser.add_argument('--accumulate', type=int, default=2, help='batches to accumulate before optimizing')
     parser.add_argument('--fp_16', type=bool, default=False, help='whither to use fp16 precision')
     parser.add_argument('--exp_name', type=str, default='debug', help='log experiment name')
+    parser.add_argument('--ckpt', type=str, default=None, help='model checkpoint')#weight/darknet53_448.weights
     opt = parser.parse_args()
 
 
@@ -69,5 +70,10 @@ if __name__ == '__main__':
         save_last=True)
     #
     tb_logger = pl_loggers.TensorBoardLogger('log/', name=opt.exp_name)
-    trainer = pl.Trainer(gpus=-1, logger=tb_logger, checkpoint_callback=checkpoint_callback)
+    trainer = pl.Trainer(
+        gpus=-1,
+        logger=tb_logger,
+        checkpoint_callback=checkpoint_callback,
+        resume_from_checkpoint=opt.ckpt
+    )
     trainer.fit(model, train_dataloader=train_dataloader, val_dataloaders=test_dataloader)

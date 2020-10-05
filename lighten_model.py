@@ -30,6 +30,7 @@ class lightenYOLOv4(pl.LightningModule):
                                     iou_threshold_loss=cfg.TRAIN["IOU_THRESHOLD_LOSS"])
 
         self.evaluator = Evaluator(self.model, showatt=False)
+        self.evaluator.clear_predict_file()
 
     # how you want your model to do inference/predictions
     def forward(self, img):
@@ -84,6 +85,7 @@ class lightenYOLOv4(pl.LightningModule):
 
     def validation_epoch_end(self, outputs):
         APs = self.evaluator.calc_APs()
+        self.evaluator.clear_predict_file()
         mAP = 0
         for i in APs:
             mAP += APs[i]
@@ -104,7 +106,7 @@ class lightenYOLOv4(pl.LightningModule):
         '''
         loss, loss_ciou, loss_conf, loss_cls = self.criterion(p, p_d, label_sbbox, label_mbbox,
                                                   label_lbbox, sbboxes, mbboxes, lbboxes)
-        
+
         self.log('val_loss_ciou', loss_ciou)
         self.log('val_loss_conf', loss_conf)
         self.log('val_loss_cls', loss_cls)

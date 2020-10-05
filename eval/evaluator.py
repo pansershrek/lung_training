@@ -173,7 +173,10 @@ class Evaluator(object):
         bboxes = np.concatenate([coors, scores[:, np.newaxis], classes[:, np.newaxis]], axis=-1)
 
         return bboxes
-
+    def clear_predict_file(self):
+        if os.path.exists(self.pred_result_path):
+            shutil.rmtree(self.pred_result_path)
+        os.mkdir(self.pred_result_path)
     def calc_APs(self, iou_thresh=0.5, use_07_metric=False):
         """
         Calculate ap values for each category
