@@ -35,6 +35,18 @@ class lightenYOLOv4(pl.LightningModule):
     def forward(self, img):
         p, p_d = self.model(img)
         return p, p_d
+    """
+    def training_epoch_end(self,outputs):
+        #  the function is called after every epoch is completed
+        # calculating average loss
+        avg_loss = 0
+        avg_loss = torch.stack([x['loss'] for x in outputs]).mean()
+        # creating log dictionary
+        result = pl.TrainResult()
+        result.log('val/loss_epoch', avg_loss)
+        return result
+    """
+
 
     # the train loop INDEPENDENT of forward.
     def training_step(self, batch, batch_idx):
@@ -44,44 +56,42 @@ class lightenYOLOv4(pl.LightningModule):
         loss, loss_ciou, loss_conf, loss_cls = self.criterion(p, p_d, label_sbbox, label_mbbox,
                                                   label_lbbox, sbboxes, mbboxes, lbboxes)
 
+
+        result = pl.TrainResult(minimize=loss)
+        #result = pl.TrainResult(loss)
+        #result.log('train_loss_ciou', loss_ciou)
+        #result.log('train_loss_conf', loss_conf)
+        #result.log('train_loss_cls', loss_cls)
+        result.log('train_loss', loss, on_step=True, on_epoch=True)
+        return result
         '''
-        result = pl.EvalResult(checkpoint_on=loss)
-        result.log('train_loss_ciou', loss_ciou)
-        result.log('train_loss_conf', loss_conf)
-        result.log('train_loss_cls', loss_cls)
-        result.log('train_loss', loss, on_epoch=True)
+        #https://www.learnopencv.com/tensorboard-with-pytorch-lightning/
+        logs={"train_loss": loss,
+            "train_loss_ciou":loss_ciou,
+            "train_loss_conf":loss_conf,
+            "train_loss_cls":loss_cls,}
+        batch_dictionary={
+            #REQUIRED: It ie required for us to return "loss"
+            "loss": loss,
+            #optional for batch logging purposes
+            "log": logs,
+        }
+        return batch_dictionary
+
         '''
 
-        return loss
 
-    def sample_validation_step(self, batch, batch_idx):
-        images, targets, image_ids = batch
-        targets = [{k: v for k, v in t.items()} for t in targets]
-        outputs = self.model(images, targets)
-        res = {target["image_id"].item(): output for target, output in zip(targets, outputs)}
-        self.coco_evaluator.update(res)
-        return {}
 
     def validation_epoch_end(self, outputs):
-        #         self.coco_evaluator.accumulate()
-        #         self.coco_evaluator.summarize()
-        #         # coco main metric
-        #         metric = self.coco_evaluator.coco_eval['bbox'].stats[0]
         APs = self.evaluator.calc_APs()
         mAP = 0
         for i in APs:
-            #logger.info("{} --> mAP : {}".format(i, APs[i]))
             mAP += APs[i]
         mAP = mAP / self.model.getNC()
-        #logger.info("mAP : {}".format(mAP))
-        #logger.info("inference time: {:.2f} ms".format(inference_time))
-        #writer.add_scalar('mAP', mAP, epoch)
-        #self.__save_model_weights(epoch, mAP)
-        #logger.info('save weights done')
-
-        #tensorboard_logs = {'main_score': metric}
-        #return {'val_loss': metric, 'log': tensorboard_logs, 'progress_bar': tensorboard_logs}
-        return {'val_mAP': mAP}
+        result = pl.EvalResult()
+        result.log('val/mAP_epoch', torch.Tensor([mAP]).cuda())
+        #trainer.logger_connector.logged_metrics
+        return result
 
     def validation_step(self, batch, batch_idx):
         img_batch, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name = batch
@@ -94,13 +104,12 @@ class lightenYOLOv4(pl.LightningModule):
         '''
         loss, loss_ciou, loss_conf, loss_cls = self.criterion(p, p_d, label_sbbox, label_mbbox,
                                                   label_lbbox, sbboxes, mbboxes, lbboxes)
-
+        
         self.log('val_loss_ciou', loss_ciou)
         self.log('val_loss_conf', loss_conf)
         self.log('val_loss_cls', loss_cls)
         self.log('val_loss', loss)
         '''
-
         return 1
 
     def test_step(self, batch, batch_idx):
