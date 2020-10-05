@@ -36,12 +36,12 @@ class Build_Dataset(Dataset):
     def __getitem__(self, item):
         assert item <= len(self), 'index range error'
 
-        
+
         if self.anno_file_type == 'train':
             img_org, bboxes_org, img_name = self.__parse_annotation(self.__annotations[item])
             img_org, bboxes_org = self.__data_aug(img_org, bboxes_org)
             img_org = img_org.transpose(2, 0, 1)  # HWC->CHW
-            
+
             item_mix = random.randint(0, len(self.__annotations)-1)
             img_mix, bboxes_mix, _ = self.__parse_annotation(self.__annotations[item_mix])
             img_mix, bboxes_mix = self.__data_aug(img_mix, bboxes_mix)
@@ -49,16 +49,18 @@ class Build_Dataset(Dataset):
 
             img, bboxes = dataAug.Mixup()(img_org, bboxes_org, img_mix, bboxes_mix)
             del img_mix, bboxes_mix
+            img_size = img.shape[1] # img must be square
         else:
             img_org, bboxes_org, img_name = self.__parse_annotation(self.__annotations[item])
             img_org = img_org.transpose(2, 0, 1)
             img = img_org
             bboxes = bboxes_org
+            img_size=512#magic, need fix
 
         del img_org, bboxes_org
 
 
-        label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self.__creat_label(bboxes)
+        label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self.__creat_label(bboxes, img_size)
 
         img = torch.from_numpy(img).float()
         label_sbbox = torch.from_numpy(label_sbbox).float()
@@ -105,7 +107,7 @@ class Build_Dataset(Dataset):
 
         return img, bboxes
 
-    def __creat_label(self, bboxes):
+    def __creat_label(self, bboxes, img_size):
         """
         Label assignment. For a single picture all GT box bboxes are assigned anchor.
         1、Select a bbox in order, convert its coordinates("xyxy") to "xywh"; and scale bbox'
@@ -123,7 +125,7 @@ class Build_Dataset(Dataset):
 
         anchors = np.array(cfg.MODEL["ANCHORS"])
         strides = np.array(cfg.MODEL["STRIDES"])
-        train_output_size = self.img_size / strides
+        train_output_size = img_size / strides
         anchors_per_scale = cfg.MODEL["ANCHORS_PER_SCLAE"]
 
         label = [np.zeros((int(train_output_size[i]), int(train_output_size[i]), anchors_per_scale, 6+self.num_classes))
