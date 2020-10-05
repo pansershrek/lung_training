@@ -104,7 +104,12 @@ class Evaluator(object):
         org_img = np.copy(img)
         org_h, org_w, _ = org_img.shape
 
-        img = self.__get_img_tensor(img, test_shape).to(self.device)
+        if 1:
+            img = self.__get_img_tensor(img, test_shape).to(self.device)
+        else:#should use interpolate
+            img = F.interpolate(img.unsqueeze(0), size=test_shape, mode='bilinear')
+            img = img[0]
+
         self.model.eval()
         with torch.no_grad():
             start_time = current_milli_time()
