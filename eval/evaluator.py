@@ -9,14 +9,14 @@ import config.yolov4_config as cfg
 import time
 current_milli_time = lambda: int(round(time.time() * 1000))
 class Evaluator(object):
-    def __init__(self, model, showatt):
+    def __init__(self, model, showatt, exp_name):
         if cfg.TRAIN["DATA_TYPE"] == 'VOC':
             self.classes = cfg.VOC_DATA["CLASSES"]
         elif cfg.TRAIN["DATA_TYPE"] == 'COCO':
             self.classes = cfg.COCO_DATA["CLASSES"]
         else:
             self.classes = cfg.Customer_DATA["CLASSES"]
-        self.pred_result_path = os.path.join(cfg.PROJECT_PATH, 'pred_result')
+        self.pred_result_path = os.path.join(cfg.PROJECT_PATH, 'pred_result', exp_name)
         self.val_data_path = os.path.join(cfg.DATA_PATH, 'VOCtest-2007', 'VOCdevkit', 'VOC2007')
         self.conf_thresh = cfg.VAL["CONF_THRESH"]
         self.nms_thresh = cfg.VAL["NMS_THRESH"]

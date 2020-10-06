@@ -20,7 +20,7 @@ TRAIN = {
          "IOU_THRESHOLD_LOSS": 0.5,
          "YOLO_EPOCHS": 5000,
          "Mobilenet_YOLO_EPOCHS": 120,
-         "NUMBER_WORKERS": 0,
+         "NUMBER_WORKERS": 6,
          "MOMENTUM": 0.9,
          "WEIGHT_DECAY": 0.0005,
          "LR_INIT": 1e-4,
@@ -33,7 +33,7 @@ TRAIN = {
 VAL = {
         "TEST_IMG_SIZE": 416,
         "BATCH_SIZE": 1,
-        "NUMBER_WORKERS": 0,
+        "NUMBER_WORKERS": 6,
         "CONF_THRESH": 0.005,
         "NMS_THRESH": 0.45,
         "MULTI_SCALE_VAL": True,

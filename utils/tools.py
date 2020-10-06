@@ -285,6 +285,7 @@ def CIOU_xywh_torch(boxes1,boxes2):
 
 
     #cal ciou
+    #ciou dosen't need square root when calculate distance?
     cious = ious - (center_dis / outer_diagonal_line + alpha*v)
 
     return cious

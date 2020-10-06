@@ -21,7 +21,7 @@ from eval.evaluator import Evaluator
 import utils.gpu as gpu
 
 class lightenYOLOv4(pl.LightningModule):
-    def __init__(self, weight_path, resume, accumulate=None):
+    def __init__(self, weight_path, resume, exp_name, accumulate=None):
         # precision=16 for fp16
 
         super().__init__()
@@ -29,7 +29,7 @@ class lightenYOLOv4(pl.LightningModule):
         self.criterion = YoloV4Loss(anchors=cfg.MODEL["ANCHORS"], strides=cfg.MODEL["STRIDES"],
                                     iou_threshold_loss=cfg.TRAIN["IOU_THRESHOLD_LOSS"])
 
-        self.evaluator = Evaluator(self.model, showatt=False)
+        self.evaluator = Evaluator(self.model, showatt=False, exp_name=exp_name)
         self.evaluator.clear_predict_file()
 
     # how you want your model to do inference/predictions

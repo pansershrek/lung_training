@@ -32,12 +32,12 @@ if __name__ == '__main__':
     test_dataset = data.Build_Dataset(anno_file_type="test", img_size=cfg.VAL["TEST_IMG_SIZE"])
 
     train_dataloader = DataLoader(train_dataset,
-                                        batch_size=cfg.TRAIN["BATCH_SIZE"],
+                                        batch_size=1, #cfg.TRAIN["BATCH_SIZE"],
                                         num_workers=cfg.TRAIN["NUMBER_WORKERS"],
                                         shuffle=True, pin_memory=True
                                         )
     test_dataloader = DataLoader(test_dataset,
-                                        batch_size=1, #cfg.TRAIN["BATCH_SIZE"],
+                                        batch_size=1, #cfg.VAL["BATCH_SIZE"],
                                         num_workers=cfg.VAL["NUMBER_WORKERS"],
                                         shuffle=False, pin_memory=True
                                         )
@@ -59,7 +59,8 @@ if __name__ == '__main__':
 
     model = lightenYOLOv4(
         weight_path=opt.weight_path,
-        resume=opt.resume
+        resume=opt.resume,
+        exp_name=opt.exp_name
     )
 
     checkpoint_callback = CustomModelCheckpoint(monitor='val/mAP_epoch',
