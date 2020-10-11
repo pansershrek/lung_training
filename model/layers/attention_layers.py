@@ -5,8 +5,9 @@ import torch.nn.functional as F
 
 ###########################################################################################################
 class SEModule(nn.Module):
-    def __init__(self, channels, reduction=16):
+    def __init__(self, channels, reduction=16, dims=2):
         super(SEModule, self).__init__()
+        assert dims==2, 'dims==3 not implemented'
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.fc_1 = nn.Conv2d(channels, channels // reduction, kernel_size=1, padding=0)
         self.relu = nn.ReLU(inplace=True)
@@ -110,8 +111,9 @@ class SpatialGate(nn.Module):
 
 
 class CBAM(nn.Module):
-    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
+    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False, dims=2):
          super(CBAM, self).__init__()
+         assert dims==2, 'dims==3 not implemented'
          self.ChannelGate = ChannelGate(gate_channels, reduction_ratio, pool_types)
          self.no_spatial = no_spatial
          if not no_spatial:

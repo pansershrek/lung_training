@@ -21,10 +21,11 @@ class FocalLoss(nn.Module):
 
 
 class YoloV4Loss(nn.Module):
-    def __init__(self, anchors, strides, iou_threshold_loss=0.5):
+    def __init__(self, anchors, strides, iou_threshold_loss=0.5, dims=2):
         super(YoloV4Loss, self).__init__()
         self.__iou_threshold_loss = iou_threshold_loss
         self.__strides = strides
+        self.__dims=dims
 
     def forward(self, p, p_d, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes):
         """
@@ -79,28 +80,43 @@ class YoloV4Loss(nn.Module):
 
         :return: The average loss(loss_giou, loss_conf, loss_cls) of all batches of this detection layer.
         """
+        dims = self.__dims
         BCE = nn.BCEWithLogitsLoss(reduction="none")
         FOCAL = FocalLoss(gamma=2, alpha=1.0, reduction="none")
+        if dims==3:
+            batch_size, grid = p.shape[0], p.shape[1:4]
+            img_size = stride * torch.tensor([_ for _ in grid])
+            p_conf = p[..., 6:7]
+            p_cls = p[..., 7:]
 
-        batch_size, grid = p.shape[:2]
-        img_size = stride * grid
+            p_d_xywh = p_d[..., :6]
 
-        p_conf = p[..., 4:5]
-        p_cls = p[..., 5:]
+            label_xywh = label[..., :6]
+            label_obj_mask = label[..., 6:7]
+            label_cls = label[..., 8:]
+            label_mix = label[..., 7:8]
+        else:
+            batch_size, grid = p.shape[0], p.shape[1:3]
+            img_size = stride * torch.tensor([_ for _ in grid])
+            p_conf = p[..., 4:5]
+            p_cls = p[..., 5:]
 
-        p_d_xywh = p_d[..., :4]
+            p_d_xywh = p_d[..., :4]
 
-        label_xywh = label[..., :4]
-        label_obj_mask = label[..., 4:5]
-        label_cls = label[..., 6:]
-        label_mix = label[..., 5:6]
+            label_xywh = label[..., :4]
+            label_obj_mask = label[..., 4:5]
+            label_cls = label[..., 6:]
+            label_mix = label[..., 5:6]
 
 
         # loss ciou
         ciou = tools.CIOU_xywh_torch(p_d_xywh, label_xywh).unsqueeze(-1)
 
         # The scaled weight of bbox is used to balance the impact of small objects and large objects on loss.
-        bbox_loss_scale = 2.0 - 1.0 * label_xywh[..., 2:3] * label_xywh[..., 3:4] / (img_size ** 2)
+        if dims==3:
+            bbox_loss_scale = 2.0 - 1.0 * label_xywh[..., 3:4] * label_xywh[..., 4:5] * label_xywh[..., 5:6] / (img_size ** 3)
+        else:
+            bbox_loss_scale = 2.0 - 1.0 * label_xywh[..., 2:3] * label_xywh[..., 3:4] / (img_size ** 2)
         loss_ciou = label_obj_mask * bbox_loss_scale * (1.0 - ciou) * label_mix
 
 

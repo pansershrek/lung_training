@@ -12,26 +12,31 @@ class Build_Model(nn.Module):
     """
     Note ： int the __init__(), to define the modules should be in order, because of the weight file is order
     """
-    def __init__(self, weight_path=None, resume=False):
+    def __init__(self, weight_path=None, resume=False, dims=2):
         super(Build_Model, self).__init__()
 
-        self.__anchors = torch.FloatTensor(cfg.MODEL["ANCHORS"])
+        self.__anchors = torch.FloatTensor(cfg.MODEL["ANCHORS3D"])
         self.__strides = torch.FloatTensor(cfg.MODEL["STRIDES"])
         if cfg.TRAIN["DATA_TYPE"] == 'VOC':
             self.__nC = cfg.VOC_DATA["NUM"]
         elif cfg.TRAIN["DATA_TYPE"] == 'COCO':
             self.__nC = cfg.COCO_DATA["NUM"]
+        elif cfg.TRAIN["DATA_TYPE"] == 'ABUS':
+            self.__nC = cfg.ABUS_DATA["NUM"]
         else:
             self.__nC = cfg.Customer_DATA["NUM"]
-        self.__out_channel = cfg.MODEL["ANCHORS_PER_SCLAE"] * (self.__nC + 5)
+        if dims==3:
+            self.__out_channel = cfg.MODEL["ANCHORS_PER_SCLAE"] * (self.__nC + 7)
+        else:
+            self.__out_channel = cfg.MODEL["ANCHORS_PER_SCLAE"] * (self.__nC + 5)
 
-        self.__yolov4 = YOLOv4(weight_path=weight_path, out_channels=self.__out_channel, resume=resume)
+        self.__yolov4 = YOLOv4(weight_path=weight_path, out_channels=self.__out_channel, resume=resume, dims=dims)
         # small
-        self.__head_s = Yolo_head(nC=self.__nC, anchors=self.__anchors[0], stride=self.__strides[0])
+        self.__head_s = Yolo_head(nC=self.__nC, anchors=self.__anchors[0], stride=self.__strides[0], dims=dims)
         # medium
-        self.__head_m = Yolo_head(nC=self.__nC, anchors=self.__anchors[1], stride=self.__strides[1])
+        self.__head_m = Yolo_head(nC=self.__nC, anchors=self.__anchors[1], stride=self.__strides[1], dims=dims)
         # large
-        self.__head_l = Yolo_head(nC=self.__nC, anchors=self.__anchors[2], stride=self.__strides[2])
+        self.__head_l = Yolo_head(nC=self.__nC, anchors=self.__anchors[2], stride=self.__strides[2], dims=dims)
 
 
     def forward(self, x):
@@ -49,7 +54,7 @@ class Build_Model(nn.Module):
         else:
             p, p_d = list(zip(*out))
             return p, torch.cat(p_d, 0)
-    
+
     def getNC(self):
         return self.__nC
 

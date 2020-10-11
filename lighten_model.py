@@ -21,13 +21,13 @@ from eval.evaluator import Evaluator
 import utils.gpu as gpu
 
 class lightenYOLOv4(pl.LightningModule):
-    def __init__(self, weight_path, resume, exp_name, accumulate=None):
+    def __init__(self, weight_path, resume, exp_name, accumulate=None, dims=2):
         # precision=16 for fp16
 
         super().__init__()
-        self.model = Build_Model(weight_path=weight_path, resume=resume)
+        self.model = Build_Model(weight_path=weight_path, resume=resume, dims=dims)
         self.criterion = YoloV4Loss(anchors=cfg.MODEL["ANCHORS"], strides=cfg.MODEL["STRIDES"],
-                                    iou_threshold_loss=cfg.TRAIN["IOU_THRESHOLD_LOSS"])
+                                    iou_threshold_loss=cfg.TRAIN["IOU_THRESHOLD_LOSS"], dims=dims)
 
         self.evaluator = Evaluator(self.model, showatt=False, exp_name=exp_name)
         self.evaluator.clear_predict_file()
@@ -99,8 +99,6 @@ class lightenYOLOv4(pl.LightningModule):
         img_batch, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name = batch
 
         for idx, img in tqdm(zip(img_name, img_batch)):
-            # CHW -> HWC
-            img = img.cpu().numpy().transpose(1, 2, 0)
             bboxes_prd = self.evaluator.get_bbox(img, multi_test=False, flip_test=False)
             self.evaluator.store_bbox(idx, bboxes_prd)
         '''

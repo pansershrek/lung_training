@@ -15,7 +15,7 @@ class Mish(nn.Module):
         return x * torch.tanh(F.softplus(x))
 
 
-norm_name = {"bn": nn.BatchNorm2d}
+norm_name = {"bn": nn.BatchNorm2d, "bn3d": nn.BatchNorm3d}
 activate_name = {
     "relu": nn.ReLU,
     "leaky": nn.LeakyReLU,
@@ -24,18 +24,24 @@ activate_name = {
 
 
 class Convolutional(nn.Module):
-    def __init__(self, filters_in, filters_out, kernel_size, stride=1, norm='bn', activate='mish'):
+    def __init__(self, filters_in, filters_out, kernel_size, stride=1, norm='bn', activate='mish', dims=2):
         super(Convolutional, self).__init__()
 
         self.norm = norm
         self.activate = activate
-
-        self.__conv = nn.Conv2d(in_channels=filters_in, out_channels=filters_out, kernel_size=kernel_size,
+        if dims==3:
+            self.__conv = nn.Conv3d(in_channels=filters_in, out_channels=filters_out, kernel_size=kernel_size,
                                 stride=stride, padding=kernel_size//2, bias=not norm)
+        else:
+            self.__conv = nn.Conv2d(in_channels=filters_in, out_channels=filters_out, kernel_size=kernel_size,
+                                    stride=stride, padding=kernel_size//2, bias=not norm)
         if norm:
             assert norm in norm_name.keys()
             if norm == "bn":
-                self.__norm = norm_name[norm](num_features=filters_out)
+                if dims==3:
+                    self.__norm = norm_name["bn3d"](num_features=filters_out)
+                else:
+                    self.__norm = norm_name[norm](num_features=filters_out)
 
         if activate:
             assert activate in activate_name.keys()
@@ -52,25 +58,24 @@ class Convolutional(nn.Module):
             x = self.__norm(x)
         if self.activate:
             x = self.__activate(x)
-
         return x
 
 class CSPBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, hidden_channels=None, residual_activation='linear'):
+    def __init__(self, in_channels, out_channels, hidden_channels=None, residual_activation='linear', dims=2):
         super(CSPBlock, self).__init__()
 
         if hidden_channels is None:
             hidden_channels = out_channels
 
         self.block = nn.Sequential(
-            Convolutional(in_channels, hidden_channels, 1),
-            Convolutional(hidden_channels, out_channels, 3)
+            Convolutional(in_channels, hidden_channels, 1, dims=dims),
+            Convolutional(hidden_channels, out_channels, 3, dims=dims)
         )
 
         self.activation = activate_name[residual_activation]
         self.attention = cfg.ATTENTION["TYPE"]
-        if self.attention == 'SEnet':self.attention_module = SEModule(out_channels)
-        elif self.attention == 'CBAM':self.attention_module = CBAM(out_channels)
+        if self.attention == 'SEnet':self.attention_module = SEModule(out_channels, dims=dims)
+        elif self.attention == 'CBAM':self.attention_module = CBAM(out_channels, dims=dims)
         else: self.attention = None
 
     def forward(self, x):
@@ -82,20 +87,20 @@ class CSPBlock(nn.Module):
         return out
 
 class CSPFirstStage(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, dims=2):
         super(CSPFirstStage, self).__init__()
 
-        self.downsample_conv = Convolutional(in_channels, out_channels, 3, stride=2)
+        self.downsample_conv = Convolutional(in_channels, out_channels, 3, stride=2, dims=dims)
 
-        self.split_conv0 = Convolutional(out_channels, out_channels, 1)
-        self.split_conv1 = Convolutional(out_channels, out_channels, 1)
+        self.split_conv0 = Convolutional(out_channels, out_channels, 1, dims=dims)
+        self.split_conv1 = Convolutional(out_channels, out_channels, 1, dims=dims)
 
         self.blocks_conv = nn.Sequential(
-            CSPBlock(out_channels, out_channels, in_channels),
-            Convolutional(out_channels, out_channels, 1)
+            CSPBlock(out_channels, out_channels, in_channels, dims=dims),
+            Convolutional(out_channels, out_channels, 1, dims=dims)
         )
 
-        self.concat_conv = Convolutional(out_channels*2, out_channels, 1)
+        self.concat_conv = Convolutional(out_channels*2, out_channels, 1, dims=dims)
 
     def forward(self, x):
         x = self.downsample_conv(x)
@@ -111,20 +116,20 @@ class CSPFirstStage(nn.Module):
         return x
 
 class CSPStage(nn.Module):
-    def __init__(self, in_channels, out_channels, num_blocks):
+    def __init__(self, in_channels, out_channels, num_blocks, dims=2):
         super(CSPStage, self).__init__()
 
-        self.downsample_conv = Convolutional(in_channels, out_channels, 3, stride=2)
+        self.downsample_conv = Convolutional(in_channels, out_channels, 3, stride=2, dims=dims)
 
-        self.split_conv0 = Convolutional(out_channels, out_channels//2, 1)
-        self.split_conv1 = Convolutional(out_channels, out_channels//2, 1)
+        self.split_conv0 = Convolutional(out_channels, out_channels//2, 1, dims=dims)
+        self.split_conv1 = Convolutional(out_channels, out_channels//2, 1, dims=dims)
 
         self.blocks_conv = nn.Sequential(
-            *[CSPBlock(out_channels//2, out_channels//2) for _ in range(num_blocks)],
-            Convolutional(out_channels//2, out_channels//2, 1)
+            *[CSPBlock(out_channels//2, out_channels//2, dims=dims) for _ in range(num_blocks)],
+            Convolutional(out_channels//2, out_channels//2, 1, dims=dims)
         )
 
-        self.concat_conv = Convolutional(out_channels, out_channels, 1)
+        self.concat_conv = Convolutional(out_channels, out_channels, 1, dims=dims)
 
     def forward(self, x):
         x = self.downsample_conv(x)
@@ -140,23 +145,25 @@ class CSPStage(nn.Module):
         return x
 
 class CSPDarknet53(nn.Module):
-    def __init__(self, stem_channels=32, feature_channels=[64, 128, 256, 512, 1024], num_features=3,weight_path=None, resume=False):
+    def __init__(self, in_channel, stem_channels=32, feature_channels=[64, 128, 256, 512, 1024], num_features=3,weight_path=None, resume=False, dims=2):
         super(CSPDarknet53, self).__init__()
-
-        self.stem_conv = Convolutional(3, stem_channels, 3)
+        stem_channels = 4
+        feature_channels = [int(_/16) for _ in feature_channels]
+        self.stem_conv = Convolutional(in_channel, stem_channels, 3, dims=dims)
 
         self.stages = nn.ModuleList([
-            CSPFirstStage(stem_channels, feature_channels[0]),
-            CSPStage(feature_channels[0], feature_channels[1], 2),
-            CSPStage(feature_channels[1], feature_channels[2], 8),
-            CSPStage(feature_channels[2], feature_channels[3], 8),
-            CSPStage(feature_channels[3], feature_channels[4], 4)
+            CSPFirstStage(stem_channels, feature_channels[0], dims=dims),
+            CSPStage(feature_channels[0], feature_channels[1], 2, dims=dims),
+            CSPStage(feature_channels[1], feature_channels[2], 8, dims=dims),
+            CSPStage(feature_channels[2], feature_channels[3], 8, dims=dims),
+            CSPStage(feature_channels[3], feature_channels[4], 4, dims=dims)
         ])
- 
+
         self.feature_channels = feature_channels
         self.num_features = num_features
-
-        if weight_path and not resume: self.load_CSPdarknet_weights(weight_path)
+        if weight_path and not resume:
+            assert dims==2, 'load pretrained weight with dims=3 not implemented'
+        if weight_path and not resume: self.load_CSPdarknet_weights(weight_path, dims=dims)
         else: self._initialize_weights()
 
     def forward(self, x):
@@ -186,9 +193,23 @@ class CSPDarknet53(nn.Module):
 
                 print("initing {}".format(m))
 
-    def load_CSPdarknet_weights(self, weight_file, cutoff=52):
-        "https://github.com/ultralytics/yolov3/blob/master/models.py"
+            if isinstance(m, nn.Conv3d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.kernel_size[2] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                if m.bias is not None:
+                    m.bias.data.zero_()
 
+                print("initing {}".format(m))
+            elif isinstance(m, nn.BatchNorm3d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+
+                print("initing {}".format(m))
+
+
+    def load_CSPdarknet_weights(self, weight_file, cutoff=52, dims=2):
+        "https://github.com/ultralytics/yolov3/blob/master/models.py"
+        assert dims==2, 'load_CSPdarknet_weights with dims==3 not implemented'
         print("load darknet weights : ", weight_file)
 
         with open(weight_file, 'rb') as f:
@@ -241,12 +262,16 @@ class CSPDarknet53(nn.Module):
                 print("loading weight {}".format(conv_layer))
 
 
-def _BuildCSPDarknet53(weight_path, resume):
-    model = CSPDarknet53(weight_path=weight_path, resume=resume)
-
+def _BuildCSPDarknet53(in_channel, weight_path, resume, dims=2):
+    model = CSPDarknet53(in_channel, weight_path=weight_path, resume=resume, dims=dims)
     return model, model.feature_channels[-3:]
 
 if __name__ == '__main__':
     model = CSPDarknet53()
     x = torch.randn(1, 3, 224, 224)
     y = model(x)
+
+    model = CSPDarknet53(dims=3)
+    x = torch.randn(1, 3, 224, 224, 224)
+    y = model(x)
+    print(y.size())

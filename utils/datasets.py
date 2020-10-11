@@ -23,6 +23,8 @@ class Build_Dataset(Dataset):
             self.classes = cfg.VOC_DATA["CLASSES"]
         elif cfg.TRAIN["DATA_TYPE"] == 'COCO':
             self.classes = cfg.COCO_DATA["CLASSES"]
+        elif cfg.TRAIN["DATA_TYPE"] == 'ABUS':
+            self.classes = cfg.ABUS_DATA["CLASSES"]
         else:
             self.classes = cfg.Customer_DATA["CLASSES"]
         self.num_classes = len(self.classes)
@@ -39,7 +41,7 @@ class Build_Dataset(Dataset):
 
         if self.anno_file_type == 'train':
             img_org, bboxes_org, img_name = self.__parse_annotation(self.__annotations[item])
-            img_org, bboxes_org = self.__data_aug(img_org, bboxes_org)
+            img_org, bboxes_org = self.__data_aug(img_org, bboxes_org) #bboxes_org.shape=(N, 5) xyxyClass
             img_org = img_org.transpose(2, 0, 1)  # HWC->CHW
 
             item_mix = random.randint(0, len(self.__annotations)-1)
@@ -66,6 +68,7 @@ class Build_Dataset(Dataset):
         label_sbbox = torch.from_numpy(label_sbbox).float()
         label_mbbox = torch.from_numpy(label_mbbox).float()
         label_lbbox = torch.from_numpy(label_lbbox).float()
+
         sbboxes = torch.from_numpy(sbboxes).float()
         mbboxes = torch.from_numpy(mbboxes).float()
         lbboxes = torch.from_numpy(lbboxes).float()

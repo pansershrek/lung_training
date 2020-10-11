@@ -10,9 +10,10 @@ from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 
+from databuilder.abus import ABUSDetectionDataset
+from databuilder.yolo4dataset import YOLO4_3DDataset
 
 from custom_model_checkpoint import CustomModelCheckpoint
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -26,10 +27,11 @@ if __name__ == '__main__':
     parser.add_argument('--ckpt', type=str, default=None, help='model checkpoint')#weight/darknet53_448.weights
     opt = parser.parse_args()
 
+    train_dataset = ABUSDetectionDataset(augmentation=True, crx_fold_num= 0, crx_partition= 'train', crx_valid=True, include_fp=False, root='datasets/abus')
+    test_dataset = ABUSDetectionDataset(augmentation=True, crx_fold_num= 0, crx_partition= 'valid', crx_valid=True, include_fp=False, root='datasets/abus')
 
-
-    train_dataset = data.Build_Dataset(anno_file_type="train", img_size=cfg.TRAIN["TRAIN_IMG_SIZE"])
-    test_dataset = data.Build_Dataset(anno_file_type="test", img_size=cfg.VAL["TEST_IMG_SIZE"])
+    train_dataset = YOLO4_3DDataset(train_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"])
+    test_dataset = YOLO4_3DDataset(test_dataset, classes=[0, 1], img_size=cfg.VAL["TEST_IMG_SIZE"])
 
     train_dataloader = DataLoader(train_dataset,
                                         batch_size=1, #cfg.TRAIN["BATCH_SIZE"],

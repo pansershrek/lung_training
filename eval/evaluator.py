@@ -7,6 +7,7 @@ from utils.visualize import *
 from utils.heatmap import imshowAtt
 import config.yolov4_config as cfg
 import time
+import torch.nn.functional as F
 current_milli_time = lambda: int(round(time.time() * 1000))
 class Evaluator(object):
     def __init__(self, model, showatt, exp_name):
@@ -14,6 +15,8 @@ class Evaluator(object):
             self.classes = cfg.VOC_DATA["CLASSES"]
         elif cfg.TRAIN["DATA_TYPE"] == 'COCO':
             self.classes = cfg.COCO_DATA["CLASSES"]
+        elif cfg.TRAIN["DATA_TYPE"] == 'ABUS':
+            self.classes = cfg.ABUS_DATA["CLASSES"]
         else:
             self.classes = cfg.Customer_DATA["CLASSES"]
         self.pred_result_path = os.path.join(cfg.PROJECT_PATH, 'pred_result', exp_name)
@@ -101,15 +104,23 @@ class Evaluator(object):
         return bboxes
 
     def __predict(self, img, test_shape, valid_scale):
-        org_img = np.copy(img)
-        org_h, org_w, _ = org_img.shape
-
-        if 1:
-            img = self.__get_img_tensor(img, test_shape).to(self.device)
-        else:#should use interpolate
-            img = F.interpolate(img.unsqueeze(0), size=test_shape, mode='bilinear')
-            img = img[0]
-
+        org_img = img
+        if len(org_img.size())==4:
+            _, org_d, org_h, org_w = org_img.size()
+            org_shape = (org_d, org_h, org_w)
+            img = img.unsqueeze(0)
+            if (test_shape==org_img.size()[:3]):
+                pass
+            else:
+                img = F.interpolate(img, size=test_shape, mode='trilinear')
+        else:
+            _, org_h, org_w = org_img.size()
+            org_shape = (org_h, org_w)
+            img = img.unsqueeze(0)
+            if (test_shape==org_img.size()[:2]):
+                pass
+            else:
+                img = F.interpolate(img, size=test_shape, mode='bilinear')
         self.model.eval()
         with torch.no_grad():
             start_time = current_milli_time()
@@ -117,9 +128,9 @@ class Evaluator(object):
             else: _, p_d = self.model(img)
             self.inference_time += (current_milli_time() - start_time)
         pred_bbox = p_d.squeeze().cpu().numpy()
-        bboxes = self.__convert_pred(pred_bbox, test_shape, (org_h, org_w), valid_scale)
+        bboxes = self.__convert_pred(pred_bbox, test_shape, org_shape, valid_scale)
         if self.showatt and len(img):
-            self.__show_heatmap(beta[2], org_img)
+            self.__show_heatmap(beta[2], np.copy(org_img.cpu().numpy()))
         return bboxes
 
     def __show_heatmap(self, beta, img):
@@ -134,30 +145,64 @@ class Evaluator(object):
         """
         Filter out the prediction box to remove the unreasonable scale of the box
         """
-        pred_coor = xywh2xyxy(pred_bbox[:, :4])
-        pred_conf = pred_bbox[:, 4]
-        pred_prob = pred_bbox[:, 5:]
+        if len(org_img_shape)==3:
+            pred_coor = xyzwhd2xyzxyz(pred_bbox[:, :6])
+            pred_conf = pred_bbox[:, 6]
+            pred_prob = pred_bbox[:, 7:]
+            # (1)
+            # (xmin_org, xmax_org) = ((xmin, xmax) - dw) / resize_ratio
+            # (ymin_org, ymax_org) = ((ymin, ymax) - dh) / resize_ratio
+            org_d, org_h, org_w = org_img_shape
+            resize_ratio = 1.0 * min([test_input_size[i] / org_img_shape[i] for i in range(3)])
 
-        # (1)
-        # (xmin_org, xmax_org) = ((xmin, xmax) - dw) / resize_ratio
-        # (ymin_org, ymax_org) = ((ymin, ymax) - dh) / resize_ratio
-        org_h, org_w = org_img_shape
-        resize_ratio = min(1.0 * test_input_size / org_w, 1.0 * test_input_size / org_h)
-        dw = (test_input_size - resize_ratio * org_w) / 2
-        dh = (test_input_size - resize_ratio * org_h) / 2
-        pred_coor[:, 0::2] = 1.0 * (pred_coor[:, 0::2] - dw) / resize_ratio
-        pred_coor[:, 1::2] = 1.0 * (pred_coor[:, 1::2] - dh) / resize_ratio
+            dd = (test_input_size[0] - resize_ratio * org_d) / 2
+            dh = (test_input_size[1] - resize_ratio * org_h) / 2
+            dw = (test_input_size[2] - resize_ratio * org_w) / 2
 
-        # (2)Crop off the portion of the predicted Bbox that is beyond the original image
-        pred_coor = np.concatenate([np.maximum(pred_coor[:, :2], [0, 0]),
-                                    np.minimum(pred_coor[:, 2:], [org_w - 1, org_h - 1])], axis=-1)
-        # (3)Sets the coor of an invalid bbox to 0
-        invalid_mask = np.logical_or((pred_coor[:, 0] > pred_coor[:, 2]), (pred_coor[:, 1] > pred_coor[:, 3]))
-        pred_coor[invalid_mask] = 0
+            pred_coor[:, 0::3] = 1.0 * (pred_coor[:, 0::3] - dd) / resize_ratio
+            pred_coor[:, 1::3] = 1.0 * (pred_coor[:, 1::3] - dh) / resize_ratio
+            pred_coor[:, 2::3] = 1.0 * (pred_coor[:, 2::3] - dw) / resize_ratio
 
-        # (4)Remove bboxes that are not in the valid range
-        bboxes_scale = np.sqrt(np.multiply.reduce(pred_coor[:, 2:4] - pred_coor[:, 0:2], axis=-1))
-        scale_mask = np.logical_and((valid_scale[0] < bboxes_scale), (bboxes_scale < valid_scale[1]))
+        else:
+            pred_coor = xywh2xyxy(pred_bbox[:, :4])
+            pred_conf = pred_bbox[:, 4]
+            pred_prob = pred_bbox[:, 5:]
+            # (1)
+            # (xmin_org, xmax_org) = ((xmin, xmax) - dw) / resize_ratio
+            # (ymin_org, ymax_org) = ((ymin, ymax) - dh) / resize_ratio
+            org_h, org_w = org_img_shape
+            resize_ratio = min(1.0 * test_input_size / org_w, 1.0 * test_input_size / org_h)
+            dw = (test_input_size - resize_ratio * org_w) / 2
+            dh = (test_input_size - resize_ratio * org_h) / 2
+            pred_coor[:, 0::2] = 1.0 * (pred_coor[:, 0::2] - dw) / resize_ratio
+            pred_coor[:, 1::2] = 1.0 * (pred_coor[:, 1::2] - dh) / resize_ratio
+
+        if len(org_img_shape)==3:
+            # (2)Crop off the portion of the predicted Bbox that is beyond the original image
+            pred_coor = np.concatenate([np.maximum(pred_coor[:, :3], [0, 0, 0]),
+                                        np.minimum(pred_coor[:, 3:], [org_d - 1, org_h - 1, org_w - 1])], axis=-1)
+            # (3)Sets the coor of an invalid bbox to 0
+            invalid_mask = np.logical_or((pred_coor[:, 1] > pred_coor[:, 4]), (pred_coor[:, 2] > pred_coor[:, 5]))
+            pred_coor[invalid_mask] = 0
+            invalid_mask = (pred_coor[:, 0] > pred_coor[:, 3])
+            pred_coor[invalid_mask] = 0
+
+            # (4)Remove bboxes that are not in the valid range
+            bboxes_scale = np.multiply.reduce(pred_coor[:, 3:6] - pred_coor[:, 0:3], axis=-1)
+            v_scale_3 = np.power(valid_scale, 3.0)
+            scale_mask = np.logical_and((v_scale_3[0] < bboxes_scale), (bboxes_scale < v_scale_3[1]))
+        else:
+            # (2)Crop off the portion of the predicted Bbox that is beyond the original image
+            pred_coor = np.concatenate([np.maximum(pred_coor[:, :2], [0, 0]),
+                                        np.minimum(pred_coor[:, 2:], [org_w - 1, org_h - 1])], axis=-1)
+            # (3)Sets the coor of an invalid bbox to 0
+            invalid_mask = np.logical_or((pred_coor[:, 0] > pred_coor[:, 2]), (pred_coor[:, 1] > pred_coor[:, 3]))
+            pred_coor[invalid_mask] = 0
+
+            # (4)Remove bboxes that are not in the valid range
+            bboxes_scale = np.sqrt(np.multiply.reduce(pred_coor[:, 2:4] - pred_coor[:, 0:2], axis=-1))
+            scale_mask = np.logical_and((valid_scale[0] < bboxes_scale), (bboxes_scale < valid_scale[1]))
+
 
         # (5)Remove bboxes whose score is below the score_threshold
         classes = np.argmax(pred_prob, axis=-1)
@@ -171,7 +216,6 @@ class Evaluator(object):
         classes = classes[mask]
 
         bboxes = np.concatenate([coors, scores[:, np.newaxis], classes[:, np.newaxis]], axis=-1)
-
         return bboxes
     def clear_predict_file(self):
         if os.path.exists(self.pred_result_path):
