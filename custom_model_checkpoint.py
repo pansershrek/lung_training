@@ -389,7 +389,7 @@ class CustomModelCheckpoint(Callback):
             assert trainer.global_rank == 0, 'tried to make a checkpoint from non global_rank=0'
             self._save_model(filepath, trainer, pl_module)
         #self._save_model(filepath, trainer, pl_module)
-        if True or self.save_last:
+        if self.save_last:
             filepath = os.path.join(self.dirpath, self.prefix + CustomModelCheckpoint.CHECKPOINT_NAME_LAST)
             self._save_model(filepath, trainer, pl_module)
 
