@@ -109,19 +109,24 @@ class YoloV4Loss(nn.Module):
             label_mix = label[..., 5:6]
 
 
-        # loss ciou
-        ciou = tools.CIOU_xywh_torch(p_d_xywh, label_xywh).unsqueeze(-1)
+        # loss iou
+        iou = tools.IOU_xywh_torch(p_d_xywh, label_xywh).unsqueeze(-1)
 
         # The scaled weight of bbox is used to balance the impact of small objects and large objects on loss.
         if dims==3:
-            bbox_loss_scale = 2.0 - 1.0 * label_xywh[..., 3:4] * label_xywh[..., 4:5] * label_xywh[..., 5:6] / (img_size ** 3)
+            bbox_loss_scale = 2.0 - 1.0 * label_xywh[..., 3:4] * label_xywh[..., 4:5] * label_xywh[..., 5:6] / (img_size[0] * img_size[1] * img_size[2])
         else:
-            bbox_loss_scale = 2.0 - 1.0 * label_xywh[..., 2:3] * label_xywh[..., 3:4] / (img_size ** 2)
-        loss_ciou = label_obj_mask * bbox_loss_scale * (1.0 - ciou) * label_mix
+            bbox_loss_scale = 2.0 - 1.0 * label_xywh[..., 2:3] * label_xywh[..., 3:4] / (img_size[0] * img_size[1])
+        loss_ciou = label_obj_mask * bbox_loss_scale * (1.0 - iou) * label_mix
 
-
+        #set(((1-iou)*label_mix).detach().cpu().numpy().flatten())
         # loss confidence
-        iou = tools.iou_xywh_torch(p_d_xywh.unsqueeze(4), bboxes.unsqueeze(1).unsqueeze(1).unsqueeze(1))
+        #iou = tools.iou_xywh_torch(p_d_xywh.unsqueeze(4), bboxes.unsqueeze(1).unsqueeze(1).unsqueeze(1))
+        if dims==3:
+            iou = tools.IOU_xywh_torch(p_d_xywh.unsqueeze(5), bboxes.unsqueeze(1).unsqueeze(1).unsqueeze(1).unsqueeze(1))
+        else:
+            iou = tools.IOU_xywh_torch(p_d_xywh.unsqueeze(4), bboxes.unsqueeze(1).unsqueeze(1).unsqueeze(1).unsqueeze(1))
+
         iou_max = iou.max(-1, keepdim=True)[0]
         label_noobj_mask = (1.0 - label_obj_mask) * (iou_max < self.__iou_threshold_loss).float()
 

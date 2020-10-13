@@ -36,7 +36,7 @@ class YOLO4_3DDataset(Dataset):
         self.class_to_id = dict(zip(self.classes, range(self.num_classes)))
 
     def __len__(self):
-        return  len(self.__image_dataset)
+        return len(self.__image_dataset)
 
 
     def __getitem__(self, item):
@@ -86,14 +86,15 @@ class YOLO4_3DDataset(Dataset):
                 img = img[0]
                 img = img.permute((1, 2, 0))
         if len(img.size())==4:
-            resized_boxes = bboxes + 0.0
+            resized_boxes = bboxes[:, :6] + 0.0
             for i in range(3): #3D
                 resized_boxes[:, i::3] = resized_boxes[:, i::3] * img_size[i] / org_img_shape[i]
+            bboxes[:, :6] = resized_boxes
         else:
-            resized_boxes = bboxes + 0.0
+            resized_boxes = bboxes[:, :4] + 0.0
             for i in range(2): #2D
                 resized_boxes[:, i::2] = resized_boxes[:, i::2] * img_size[i] / org_img_shape[i]
-        bboxes = resized_boxes
+            bboxes[:, :4] = resized_boxes
         label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self.__creat_label(bboxes, img_size)
         label_sbbox = torch.from_numpy(label_sbbox).float()
         label_mbbox = torch.from_numpy(label_mbbox).float()
@@ -102,8 +103,8 @@ class YOLO4_3DDataset(Dataset):
         sbboxes = torch.from_numpy(sbboxes).float()
         mbboxes = torch.from_numpy(mbboxes).float()
         lbboxes = torch.from_numpy(lbboxes).float()
-
-        return img.permute((3, 0, 1, 2)), label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name
+        img = img.permute((3, 0, 1, 2))
+        return img, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name
 
     def __creat_label(self, bboxes, img_size):
         """

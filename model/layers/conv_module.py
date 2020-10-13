@@ -15,8 +15,7 @@ import config.yolov4_config as cfg
 norm_name = {"bn": nn.BatchNorm2d}
 activate_name = {
     "relu": nn.ReLU,
-    "leaky": nn.LeakyReLU,
-    "mish": Mish}
+    "leaky": nn.LeakyReLU}
 
 class Convolutional(nn.Module):
     def __init__(self, filters_in, filters_out, kernel_size, stride, pad, norm=None, activate=None):

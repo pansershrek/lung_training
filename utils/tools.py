@@ -338,6 +338,62 @@ def CIOU_xyzwhd_torch(boxes1,boxes2):
     cious = ious - (center_dis / outer_diagonal_line + alpha*v)
 
     return cious
+
+def IOU_xywh_torch(boxes1,boxes2):
+    '''
+    cal CIOU of two boxes or batch boxes
+    :param boxes1:[xmin,ymin,xmax,ymax] or
+                [[xmin,ymin,xmax,ymax],[xmin,ymin,xmax,ymax],...]
+    :param boxes2:[xmin,ymin,xmax,ymax]
+    :return:
+    '''
+
+    # xywh->xyxy
+    if boxes1.size(-1) == 6:
+        boxes1 = torch.cat([boxes1[..., :3] - boxes1[..., 3:] * 0.5,
+                        boxes1[..., :3] + boxes1[..., 3:] * 0.5], dim=-1)
+        boxes2 = torch.cat([boxes2[..., :3] - boxes2[..., 3:] * 0.5,
+                            boxes2[..., :3] + boxes2[..., 3:] * 0.5], dim=-1)
+
+        boxes1 = torch.cat([torch.min(boxes1[..., :3], boxes1[..., 3:]),
+                            torch.max(boxes1[..., :3], boxes1[..., 3:])], dim=-1)
+        boxes2 = torch.cat([torch.min(boxes2[..., :3], boxes2[..., 3:]),
+                            torch.max(boxes2[..., :3], boxes2[..., 3:])], dim=-1)
+
+        boxes1_area = (boxes1[..., 3] - boxes1[..., 0]) * (boxes1[..., 4] - boxes1[..., 1]) * (boxes1[..., 5] - boxes1[..., 2])
+        boxes2_area = (boxes2[..., 3] - boxes2[..., 0]) * (boxes2[..., 4] - boxes2[..., 1]) * (boxes2[..., 5] - boxes2[..., 2])
+
+        inter_left_up = torch.max(boxes1[..., :3], boxes2[..., :3])
+        inter_right_down = torch.min(boxes1[..., 3:], boxes2[..., 3:])
+    else:
+        boxes1 = torch.cat([boxes1[..., :2] - boxes1[..., 2:] * 0.5,
+                        boxes1[..., :2] + boxes1[..., 2:] * 0.5], dim=-1)
+        boxes2 = torch.cat([boxes2[..., :2] - boxes2[..., 2:] * 0.5,
+                            boxes2[..., :2] + boxes2[..., 2:] * 0.5], dim=-1)
+
+        boxes1 = torch.cat([torch.min(boxes1[..., :2], boxes1[..., 2:]),
+                            torch.max(boxes1[..., :2], boxes1[..., 2:])], dim=-1)
+        boxes2 = torch.cat([torch.min(boxes2[..., :2], boxes2[..., 2:]),
+                            torch.max(boxes2[..., :2], boxes2[..., 2:])], dim=-1)
+
+        boxes1_area = (boxes1[..., 2] - boxes1[..., 0]) * (boxes1[..., 3] - boxes1[..., 1])
+        boxes2_area = (boxes2[..., 2] - boxes2[..., 0]) * (boxes2[..., 3] - boxes2[..., 1])
+
+        inter_left_up = torch.max(boxes1[..., :2], boxes2[..., :2])
+        inter_right_down = torch.min(boxes1[..., 2:], boxes2[..., 2:])
+
+    inter_section = torch.max(inter_right_down - inter_left_up, torch.zeros_like(inter_right_down))
+    if boxes1.size(-1) == 6:
+        inter_area = inter_section[..., 0] * inter_section[..., 1] * inter_section[..., 2]
+    else:
+        inter_area = inter_section[..., 0] * inter_section[..., 1]
+    union_area = boxes1_area + boxes2_area - inter_area
+    ious = 1.0 * inter_area / (union_area+1e-3)
+    #box1_nonzero = boxes1.reshape([-1, 6])
+    #box1_nonzero = [k for k in box1_nonzero if k[0] > 0]
+    #box2_nonzero = boxes2.reshape([-1, 6])
+    #box2_nonzero = [k for k in box2_nonzero if k[0] > 0]
+    return ious
 def CIOU_xywh_torch(boxes1,boxes2):
     '''
     cal CIOU of two boxes or batch boxes
@@ -346,27 +402,49 @@ def CIOU_xywh_torch(boxes1,boxes2):
     :param boxes2:[xmin,ymin,xmax,ymax]
     :return:
     '''
+
     # xywh->xyxy
-    boxes1 = torch.cat([boxes1[..., :2] - boxes1[..., 2:] * 0.5,
+    if boxes1.size(-1) == 6:
+        boxes1 = torch.cat([boxes1[..., :3] - boxes1[..., 3:] * 0.5,
+                        boxes1[..., :3] + boxes1[..., 3:] * 0.5], dim=-1)
+        boxes2 = torch.cat([boxes2[..., :3] - boxes2[..., 3:] * 0.5,
+                            boxes2[..., :3] + boxes2[..., 3:] * 0.5], dim=-1)
+
+        boxes1 = torch.cat([torch.min(boxes1[..., :3], boxes1[..., 3:]),
+                            torch.max(boxes1[..., :3], boxes1[..., 3:])], dim=-1)
+        boxes2 = torch.cat([torch.min(boxes2[..., :3], boxes2[..., 3:]),
+                            torch.max(boxes2[..., :3], boxes2[..., 3:])], dim=-1)
+
+        boxes1_area = (boxes1[..., 3] - boxes1[..., 0]) * (boxes1[..., 4] - boxes1[..., 1]) * (boxes1[..., 5] - boxes1[..., 2])
+        boxes2_area = (boxes2[..., 3] - boxes2[..., 0]) * (boxes2[..., 4] - boxes2[..., 1]) * (boxes2[..., 5] - boxes2[..., 2])
+
+        inter_left_up = torch.max(boxes1[..., :3], boxes2[..., :3])
+        inter_right_down = torch.min(boxes1[..., 3:], boxes2[..., 3:])
+    else:
+        boxes1 = torch.cat([boxes1[..., :2] - boxes1[..., 2:] * 0.5,
                         boxes1[..., :2] + boxes1[..., 2:] * 0.5], dim=-1)
-    boxes2 = torch.cat([boxes2[..., :2] - boxes2[..., 2:] * 0.5,
-                        boxes2[..., :2] + boxes2[..., 2:] * 0.5], dim=-1)
+        boxes2 = torch.cat([boxes2[..., :2] - boxes2[..., 2:] * 0.5,
+                            boxes2[..., :2] + boxes2[..., 2:] * 0.5], dim=-1)
 
-    boxes1 = torch.cat([torch.min(boxes1[..., :2], boxes1[..., 2:]),
-                        torch.max(boxes1[..., :2], boxes1[..., 2:])], dim=-1)
-    boxes2 = torch.cat([torch.min(boxes2[..., :2], boxes2[..., 2:]),
-                        torch.max(boxes2[..., :2], boxes2[..., 2:])], dim=-1)
+        boxes1 = torch.cat([torch.min(boxes1[..., :2], boxes1[..., 2:]),
+                            torch.max(boxes1[..., :2], boxes1[..., 2:])], dim=-1)
+        boxes2 = torch.cat([torch.min(boxes2[..., :2], boxes2[..., 2:]),
+                            torch.max(boxes2[..., :2], boxes2[..., 2:])], dim=-1)
 
-    boxes1_area = (boxes1[..., 2] - boxes1[..., 0]) * (boxes1[..., 3] - boxes1[..., 1])
-    boxes2_area = (boxes2[..., 2] - boxes2[..., 0]) * (boxes2[..., 3] - boxes2[..., 1])
+        boxes1_area = (boxes1[..., 2] - boxes1[..., 0]) * (boxes1[..., 3] - boxes1[..., 1])
+        boxes2_area = (boxes2[..., 2] - boxes2[..., 0]) * (boxes2[..., 3] - boxes2[..., 1])
 
-    inter_left_up = torch.max(boxes1[..., :2], boxes2[..., :2])
-    inter_right_down = torch.min(boxes1[..., 2:], boxes2[..., 2:])
+        inter_left_up = torch.max(boxes1[..., :2], boxes2[..., :2])
+        inter_right_down = torch.min(boxes1[..., 2:], boxes2[..., 2:])
+
     inter_section = torch.max(inter_right_down - inter_left_up, torch.zeros_like(inter_right_down))
-    inter_area = inter_section[..., 0] * inter_section[..., 1]
+    if boxes1.size(-1) == 6:
+        inter_area = inter_section[..., 0] * inter_section[..., 1] * inter_section[..., 2]
+    else:
+        inter_area = inter_section[..., 0] * inter_section[..., 1]
     union_area = boxes1_area + boxes2_area - inter_area
-    ious = 1.0 * inter_area / union_area
-
+    ious = 1.0 * inter_area / (union_area+1e-3)
+    raise NotImplementedError
     # cal outer boxes
     outer_left_up = torch.min(boxes1[..., :2], boxes2[..., :2])
     outer_right_down = torch.max(boxes1[..., 2:], boxes2[..., 2:])
@@ -398,7 +476,7 @@ def CIOU_xywh_torch(boxes1,boxes2):
     return cious
 
 
-def nms(bboxes, score_threshold, iou_threshold, sigma=0.3, method='nms'):
+def nms(bboxes, score_threshold, iou_threshold, sigma=0.3, method='nms', box_top_k=50):
     """
     :param bboxes:
     假设有N个bbox的score大于score_threshold，那么bboxes的shape为(N, 6)，存储格式为(xmin, ymin, xmax, ymax, score, class)
@@ -413,6 +491,7 @@ def nms(bboxes, score_threshold, iou_threshold, sigma=0.3, method='nms'):
         classes_in_img = list(set(bboxes[:, 5].astype(np.int32)))
     classes_in_img = [_ for _ in classes_in_img if not _==0]
     best_bboxes = []
+    score_top_k_list = []
     for cls in classes_in_img:
         if bboxes.shape[-1]==8:
             cls_mask = (bboxes[:, 7].astype(np.int32) == cls)
@@ -445,7 +524,14 @@ def nms(bboxes, score_threshold, iou_threshold, sigma=0.3, method='nms'):
                 cls_bboxes[:, 4] = cls_bboxes[:, 4] * weight
                 score_mask = cls_bboxes[:, 4] > score_threshold
             cls_bboxes = cls_bboxes[score_mask]
-    return np.array(best_bboxes)
+    best_bboxes = np.array(best_bboxes)
+    top_k_bboxes = []
+    for i in range(min(len(best_bboxes), box_top_k)):
+        max_ind = np.argmax(best_bboxes[:, -2])
+        best_bbox = best_bboxes[max_ind]
+        top_k_bboxes.append(best_bbox)
+        best_bboxes = np.concatenate([best_bboxes[: max_ind], best_bboxes[max_ind + 1:]])
+    return np.array(top_k_bboxes)
 
 
 def init_seeds(seed=0):
