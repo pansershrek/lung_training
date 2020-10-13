@@ -1,8 +1,8 @@
 import numpy as np
+from torch.optim.lr_scheduler import _LRScheduler
 
-
-class CosineDecayLR(object):
-    def __init__(self, optimizer, T_max, lr_init, lr_min=0., warmup=0):
+class CosineDecayLR(_LRScheduler):
+    def __init__(self, optimizer, T_max, lr_init, lr_min=0., warmup=0, last_epoch=-1):
         """
         a cosine decay scheduler about steps, not epochs.
         :param optimizer: ex. optim.SGD
@@ -11,21 +11,22 @@ class CosineDecayLR(object):
         :param warmup: in the training begin, the lr is smoothly increase from 0 to lr_init, which means "warmup",
                         this means warmup steps, if 0 that means don't use lr warmup.
         """
-        super(CosineDecayLR, self).__init__()
         self.__optimizer = optimizer
         self.__T_max = T_max
         self.__lr_min = lr_min
         self.__lr_max = lr_init
         self.__warmup = warmup
+        super(CosineDecayLR, self).__init__(optimizer, last_epoch)
 
-
-    def step(self, t):
-        if self.__warmup and t < self.__warmup:
-            lr = self.__lr_max / self.__warmup * t
+    def step(self, epoch=None):
+        if epoch is None:
+            epoch = self.last_epoch + 1
+        if self.__warmup and epoch < self.__warmup:
+            lr = self.__lr_max / (self.__warmup+1) * (epoch+1)
         else:
             T_max = self.__T_max - self.__warmup
-            t = t - self.__warmup
-            lr = self.__lr_min + 0.5 * (self.__lr_max - self.__lr_min) * (1 + np.cos(t/T_max * np.pi))
+            epoch = epoch - self.__warmup
+            lr = self.__lr_min + 0.5 * (self.__lr_max - self.__lr_min) * (1 + np.cos(epoch/T_max * np.pi))
         for param_group in self.__optimizer.param_groups:
             param_group["lr"] = lr
 
