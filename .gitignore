@@ -9,3 +9,4 @@ dataset_link
 COCO/
 lightning_logs/
 checkpoint/
+pic/
