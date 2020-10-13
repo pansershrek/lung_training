@@ -10,7 +10,7 @@ import time
 import torch.nn.functional as F
 current_milli_time = lambda: int(round(time.time() * 1000))
 class Evaluator(object):
-    def __init__(self, model, showatt, exp_name):
+    def __init__(self, model, showatt, pred_result_path, box_top_k):
         if cfg.TRAIN["DATA_TYPE"] == 'VOC':
             self.classes = cfg.VOC_DATA["CLASSES"]
         elif cfg.TRAIN["DATA_TYPE"] == 'COCO':
@@ -19,16 +19,19 @@ class Evaluator(object):
             self.classes = cfg.ABUS_DATA["CLASSES"]
         else:
             self.classes = cfg.Customer_DATA["CLASSES"]
-        self.pred_result_path = os.path.join(cfg.PROJECT_PATH, 'pred_result', exp_name)
+        self.pred_result_path = pred_result_path
         self.val_data_path = os.path.join(cfg.DATA_PATH, 'VOCtest-2007', 'VOCdevkit', 'VOC2007')
-        self.conf_thresh = cfg.VAL["CONF_THRESH"]
-        self.nms_thresh = cfg.VAL["NMS_THRESH"]
+
         self.val_shape = cfg.VAL["TEST_IMG_SIZE"]
         self.model = model
         self.device = 'cuda'#next(model.parameters()).device
         self.__visual_imgs = 0
         self.showatt = showatt
         self.inference_time = 0.
+
+        self.conf_thresh = cfg.VAL["CONF_THRESH"]
+        self.nms_thresh = cfg.VAL["NMS_THRESH"]
+        self.box_top_k = box_top_k
 
     def APs_voc(self, multi_test=False, flip_test=False):
         img_inds_file = os.path.join(self.val_data_path,  'ImageSets', 'Main', 'test.txt')
@@ -51,38 +54,43 @@ class Evaluator(object):
 
             f = open("./output/detection-results/" + img_ind + ".txt", "w")
             for bbox in bboxes_prd:
-                coor = np.array(bbox[:4], dtype=np.int32)
-                score = bbox[4]
-                class_ind = int(bbox[5])
+                coor = np.array(bbox[:6], dtype=np.int32)
+                score = bbox[6]
+                class_ind = int(bbox[7])
 
                 class_name = self.classes[class_ind]
                 score = '%.4f' % score
-                xmin, ymin, xmax, ymax = map(str, coor)
-                s = ' '.join([img_ind, score, xmin, ymin, xmax, ymax]) + '\n'
+                zmin, ymin, xmin, zmax, ymax, xmax = map(str, coor)
+                s = ' '.join([img_ind, score, zmin, ymin, xmin, zmax, ymax, xmax]) + '\n'
 
                 with open(os.path.join(self.pred_result_path, 'comp4_det_test_' + class_name + '.txt'), 'a') as r:
                     r.write(s)
-                f.write("%s %s %s %s %s %s\n" % (class_name, score, str(xmin), str(ymin), str(xmax), str(ymax)))
+                f.write("%s %s %s %s %s %s\n" % (class_name, score, str(zmin), str(ymin), str(xmin), str(zmax), str(ymax), str(xmax)))
             f.close()
         self.inference_time = 1.0 * self.inference_time / len(img_inds)
         return self.calc_APs(), self.inference_time
 
     def store_bbox(self, img_ind, bboxes_prd):
-        f = open("./output/detection-results/" + img_ind + ".txt", "w")
-        for bbox in bboxes_prd:
-            coor = np.array(bbox[:4], dtype=np.int32)
-            score = bbox[4]
-            class_ind = int(bbox[5])
+        #'/data/bruce/CenterNet_ABUS/results/prediction/new_CASE_SR_Li^Ling_1073_201902211146_1.3.6.1.4.1.47779.1.002.npy'
+        boxes = bboxes_prd[..., :7]
+        if len(boxes)>0:
+            boxes=boxes
+        np.save(os.path.join(self.pred_result_path, img_ind), boxes)
+        # f = open("./output/detection-results/" + img_ind + ".txt", "w")
+        # for bbox in bboxes_prd:
+        #     coor = np.array(bbox[:6], dtype=np.int32)
+        #     score = bbox[6]
+        #     class_ind = int(bbox[7])
 
-            class_name = self.classes[class_ind]
-            score = '%.4f' % score
-            xmin, ymin, xmax, ymax = map(str, coor)
-            s = ' '.join([img_ind, score, xmin, ymin, xmax, ymax]) + '\n'
+        #     class_name = self.classes[class_ind]
+        #     score = '%.4f' % score
+        #     xmin, ymin, xmax, ymax = map(str, coor)
+        #     s = ' '.join([img_ind, score, xmin, ymin, xmax, ymax]) + '\n'
 
-            with open(os.path.join(self.pred_result_path, 'comp4_det_test_' + class_name + '.txt'), 'a') as r:
-                r.write(s)
-            f.write("%s %s %s %s %s %s\n" % (class_name, score, str(xmin), str(ymin), str(xmax), str(ymax)))
-        f.close()
+        #     with open(os.path.join(self.pred_result_path, 'comp4_det_test_' + class_name + '.txt'), 'a') as r:
+        #         r.write(s)
+        #     f.write("%s %s %s %s %s %s\n" % (class_name, score, str(xmin), str(ymin), str(xmax), str(ymax)))
+        # f.close()
 
     def get_bbox(self, img, multi_test=False, flip_test=False):
         if multi_test:
@@ -99,7 +107,7 @@ class Evaluator(object):
         else:
             bboxes = self.__predict(img, self.val_shape, (0, np.inf))
 
-        bboxes = nms(bboxes, self.conf_thresh, self.nms_thresh)
+        bboxes = nms(bboxes, self.conf_thresh, self.nms_thresh, self.box_top_k)
 
         return bboxes
 
@@ -109,7 +117,7 @@ class Evaluator(object):
             _, org_d, org_h, org_w = org_img.size()
             org_shape = (org_d, org_h, org_w)
             img = img.unsqueeze(0)
-            if (test_shape==org_img.size()[:3]):
+            if (test_shape==org_shape):
                 pass
             else:
                 img = F.interpolate(img, size=test_shape, mode='trilinear')
@@ -117,7 +125,7 @@ class Evaluator(object):
             _, org_h, org_w = org_img.size()
             org_shape = (org_h, org_w)
             img = img.unsqueeze(0)
-            if (test_shape==org_img.size()[:2]):
+            if (test_shape==org_shape):
                 pass
             else:
                 img = F.interpolate(img, size=test_shape, mode='bilinear')
