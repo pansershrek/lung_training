@@ -6,14 +6,16 @@ import torch.nn.functional as F
 from model.layers.attention_layers import SEModule, CBAM
 import config.yolov4_config as cfg
 
+if 0:
+    #non cuda supported
+    class Mish(nn.Module):
+        def __init__(self):
+            super(Mish, self).__init__()
 
-class Mish(nn.Module):
-    def __init__(self):
-        super(Mish, self).__init__()
-
-    def forward(self, x):
-        return x * torch.tanh(F.softplus(x))
-
+        def forward(self, x):
+            return x * torch.tanh(F.softplus(x))
+#from https://github.com/WongKinYiu/PyTorch_YOLOv4/tree/8f006d351bf1ac888239cfeaf6fcd4a31eb866ca
+from mish_cuda import MishCuda as Mish
 
 norm_name = {"bn": nn.BatchNorm2d, "bn3d": nn.BatchNorm3d}
 activate_name = {
@@ -21,7 +23,6 @@ activate_name = {
     "leaky": nn.LeakyReLU,
     'linear': nn.Identity(),
     "mish": Mish()}
-
 
 class Convolutional(nn.Module):
     def __init__(self, filters_in, filters_out, kernel_size, stride=1, norm='bn', activate='mish', dims=2):
@@ -147,9 +148,11 @@ class CSPStage(nn.Module):
 class CSPDarknet53(nn.Module):
     def __init__(self, in_channel, stem_channels=32, feature_channels=[64, 128, 256, 512, 1024], num_features=3,weight_path=None, resume=False, dims=2):
         super(CSPDarknet53, self).__init__()
-        stem_channels = 4
-        feature_channels = [int(_/16) for _ in feature_channels]
+        stem_channels = 32
+        channel_factor = 1 #stem_channels/32
+        feature_channels = [int(_ * (channel_factor)) for _ in feature_channels]
         self.stem_conv = Convolutional(in_channel, stem_channels, 3, dims=dims)
+        #self.stem_conv = Convolutional(in_channel, stem_channels, kernel_size=7, stride=2, dims=dims)
 
         self.stages = nn.ModuleList([
             CSPFirstStage(stem_channels, feature_channels[0], dims=dims),
@@ -161,10 +164,11 @@ class CSPDarknet53(nn.Module):
 
         self.feature_channels = feature_channels
         self.num_features = num_features
-        if weight_path and not resume:
-            assert dims==2, 'load pretrained weight with dims=3 not implemented'
-        if weight_path and not resume: self.load_CSPdarknet_weights(weight_path, dims=dims)
-        else: self._initialize_weights()
+
+        if weight_path and not resume and not dims==3:
+            self.load_CSPdarknet_weights(weight_path, dims=dims)
+        else:
+            self._initialize_weights()
 
     def forward(self, x):
         x = self.stem_conv(x)
