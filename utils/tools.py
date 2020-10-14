@@ -326,16 +326,16 @@ def CIOU_xyzwhd_torch(boxes1,boxes2):
     # cal width,height
     boxes1_size = torch.max(boxes1[..., 3:] - boxes1[..., :3], torch.zeros_like(inter_right_down))
     boxes2_size = torch.max(boxes2[..., 3:] - boxes2[..., :3], torch.zeros_like(inter_right_down))
-    raise NotImplementedError
-    v = (4 / (math.pi ** 2)) * torch.pow(
+    if 0:
+        v = (4 / (math.pi ** 2)) * torch.pow(
             torch.atan((boxes1_size[...,0]/torch.clamp(boxes1_size[...,1],min = 1e-6))) -
             torch.atan((boxes2_size[..., 0] / torch.clamp(boxes2_size[..., 1],min = 1e-6))), 2)
-    alpha = v / (1-ious+v)
+        alpha = v / (1-ious+v)
 
 
     #cal ciou
     #ciou dosen't need square root when calculate distance?
-    cious = ious - (center_dis / outer_diagonal_line + alpha*v)
+    cious = ious - center_dis / outer_diagonal_line #( + alpha*v)
 
     return cious
 
@@ -526,11 +526,16 @@ def nms(bboxes, score_threshold, iou_threshold, sigma=0.3, method='nms', box_top
             cls_bboxes = cls_bboxes[score_mask]
     best_bboxes = np.array(best_bboxes)
     top_k_bboxes = []
+    print(len(best_bboxes), " bboxes after nms")
+    min_conf = -1
     for i in range(min(len(best_bboxes), box_top_k)):
         max_ind = np.argmax(best_bboxes[:, -2])
         best_bbox = best_bboxes[max_ind]
         top_k_bboxes.append(best_bbox)
         best_bboxes = np.concatenate([best_bboxes[: max_ind], best_bboxes[max_ind + 1:]])
+        if min_conf==-1 or min_conf>best_bbox[-2]:
+            min_conf=best_bbox[-2]
+    print("min confidence in top ", len(top_k_bboxes), " boxes:" , min_conf)
     return np.array(top_k_bboxes)
 
 

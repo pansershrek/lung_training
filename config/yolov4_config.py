@@ -23,7 +23,7 @@ TRAIN = {
          "NUMBER_WORKERS": 6,
          "MOMENTUM": 0.9,
          "WEIGHT_DECAY": 0.0005,
-         "LR_INIT": 2.5e-3, #1e-4,
+         "LR_INIT": 1e-4, #1e-4,
          "LR_END": 1e-6,
          "WARMUP_EPOCHS": 2  # or None
          }
@@ -35,11 +35,12 @@ VAL = {
         "TEST_IMG_SIZE": (256, 64, 256),#(256, 64, 256), #
         "BATCH_SIZE": 1,
         "NUMBER_WORKERS": 6,
-        "CONF_THRESH": 0.000001, #0.005,
+        "CONF_THRESH": 0.03, #0.005,
         "NMS_THRESH": 0.45,
         "MULTI_SCALE_VAL": True,
         "FLIP_VAL": True,
-        "Visual": True
+        "Visual": True,
+        "TEST_IMG_BBOX_ORIGINAL_SIZE": (640, 160, 640)
         }
 
 Customer_DATA = {"NUM": 1, #your dataset number

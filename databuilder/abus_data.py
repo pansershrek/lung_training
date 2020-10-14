@@ -32,7 +32,7 @@ class AbusNpyFormat(data.Dataset):
                 self.gt = cut_set
         else:
             self.gt = lines
-        self.gt = self.gt[:30]
+
 
         self.set_size = len(self.gt)
         self.aug = augmentation

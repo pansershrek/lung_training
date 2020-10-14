@@ -60,14 +60,14 @@ class Trainer(object):
                                            shuffle=True, pin_memory=True
                                            )
 
-        test_dataset = ABUSDetectionDataset(augmentation=False, crx_fold_num= 0, crx_partition= 'train', crx_valid=True, include_fp=False, root=self.data_root)
+        test_dataset = ABUSDetectionDataset(augmentation=False, crx_fold_num= 0, crx_partition= 'valid', crx_valid=True, include_fp=False, root=self.data_root)
         self.test_dataset = YOLO4_3DDataset(test_dataset, classes=[0, 1], img_size=cfg.VAL["TEST_IMG_SIZE"])
         self.test_dataloader = DataLoader(self.test_dataset,
                                             batch_size=cfg.VAL["BATCH_SIZE"],
                                             num_workers=cfg.VAL["NUMBER_WORKERS"],
                                             shuffle=False, pin_memory=True
                                             )
-
+        #sum([p.flatten().size(0) for p in self.model.parameters()])
         self.model = Build_Model(weight_path=weight_path, resume=resume, dims=3).to(self.device)
 
         self.optimizer = optim.SGD(self.model.parameters(), lr=cfg.TRAIN["LR_INIT"],
@@ -207,10 +207,12 @@ class Trainer(object):
                 imgs = imgs.to(self.device)
                 for img, img_name in zip(imgs, img_names):
                     bboxes_prd = self.evaluator.get_bbox(img, multi_test=False, flip_test=False)
+                    if len(bboxes_prd) > 0:
+                        bboxes_prd[:, :6] = (bboxes_prd[:, :6] / img.size(1)) * cfg.VAL['TEST_IMG_BBOX_ORIGINAL_SIZE'][0]
                     self.evaluator.store_bbox(img_name, bboxes_prd)
             npy_dir = pred_result_path
             npy_format = npy_dir + '/{}_0.npy'
-            area, plt = calculate_FROC(self.data_root, npy_dir, npy_format, size_threshold=20)
+            area, plt = calculate_FROC(self.data_root, npy_dir, npy_format, size_threshold=20, th_step=0.025)
         end = time.time()
         logger.info("  ===cost time:{:.4f}s".format(end - start))
         return area, plt

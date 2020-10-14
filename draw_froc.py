@@ -129,38 +129,14 @@ class Trainer(object):
                 imgs = imgs.to(self.device)
                 for img, img_name in zip(imgs, img_names):
                     bboxes_prd = self.evaluator.get_bbox(img, multi_test=False, flip_test=False)
+                    bboxes_prd[:, :6] = bboxes_prd[:, :6] / img.size(1) * 640
                     self.evaluator.store_bbox(img_name, bboxes_prd)
-                if 0:
-                    label_sbbox = label_sbbox.to(self.device)
-                    label_mbbox = label_mbbox.to(self.device)
-                    label_lbbox = label_lbbox.to(self.device)
-                    sbboxes = sbboxes.to(self.device)
-                    mbboxes = mbboxes.to(self.device)
-                    lbboxes = lbboxes.to(self.device)
-                    p, p_d = self.model(imgs)
-                    self.optimizer.zero_grad()
-                    loss, loss_ciou, loss_conf, loss_cls = self.criterion(p, p_d, label_sbbox, label_mbbox,
-                                                        label_lbbox, sbboxes, mbboxes, lbboxes)
-                    # Update running mean of tracked metrics
-                    loss_items = torch.tensor([loss_ciou, loss_conf, loss_cls, loss])
-                    mloss = (mloss * i + loss_items) / (i + 1)
             root = 'datasets/abus/'
             npy_dir = 'data/pred_result/evaluate/'
             npy_format = npy_dir + '{}_0.npy'
             calculate_FROC(root, npy_dir, npy_format, size_threshold=20)
-        if 0:
-            mAP = 0.
-            with torch.no_grad():
-                APs, inference_time = Evaluator(self.model, showatt=False).APs_voc()
-                for i in APs:
-                    logger.info("{} --> mAP : {}".format(i, APs[i]))
-                    mAP += APs[i]
-                mAP = mAP / self.train_dataset.num_classes
-                logger.info("mAP : {}".format(mAP))
-                logger.info("inference time: {:.2f} ms".format(inference_time))
-                #writer.add_scalar('mAP', mAP, epoch)
-                logger.info('save weights done')
-            logger.info("  ===test mAP:{:.3f}".format(mAP))
+
+
         end = time.time()
         logger.info("  ===cost time:{:.4f}s".format(end - start))
 
