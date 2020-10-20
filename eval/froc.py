@@ -14,6 +14,38 @@ def check_boundary(ct):
 def check_size(axis, size):
     return axis[0]*axis[1]*axis[2] > size
 
+def interpolate_FROC_data(froc_x, froc_y, max_fp):
+        y_interpolate = 0
+        take_i = 0
+        for i in range(len(data)):
+            FP = froc_x[i]
+            if FP<=max_fp:
+                take_i = i
+                x1 = FP
+                y1 = froc_y[i]
+                if i>0:
+                    x2 = froc_x[i-1]
+                    y2 = froc_y[i-1]
+
+                    x_interpolate = max_fp
+                    y_interpolate = (y1 * (x2-x_interpolate) + y2 * (x_interpolate-x1)) / (x2-x1)
+                else:
+                    #if no data point for FP > 8
+                    #use sensitivity at FP = FP_small
+                    y_interpolate = y1
+                print("take i = ", i, " FP = ", int(FP*100)/100)
+                print("interpolate sen = ", y_interpolate, " for FP=", max_fp)
+                break
+            else:
+                print("skip i = ", i, " FP = ", int(FP*100)/100)
+        froc_x = froc_x[take_i:]
+        froc_y = froc_y[take_i:]
+
+        if not froc_x[0]==8:
+            froc_x = np.insert(froc_x, 0, 8)
+            froc_y = np.insert(froc_y, 0, y_interpolate)
+        return froc_x, froc_y
+
 def calculate_FROC(root, npy_dir, npy_format, size_threshold=0, th_step=0.05):
     #size_threshold is 20 in thesis
     num_npy = os.listdir(npy_dir) # dir is your directory path
@@ -196,9 +228,23 @@ def calculate_FROC(root, npy_dir, npy_format, size_threshold=0, th_step=0.05):
         print('Inference result is empty.')
         area = 0
     else:
-        draw_full(data[..., 7], data[..., 5], '#FF6D6C', 'D < 10 mm', ':', 1, True)
-        draw_full(data[..., 4], data[..., 2], '#FF0000', 'D < 15 mm', '-', 1, True)
-        area = AUC(data[..., 4], data[..., 2], normalize=True)
+        froc_x, froc_y = interpolate_FROC_data(data[..., 7], data[..., 5], max_fp=8)
+        take_count = len(froc_x[froc_x>0])+1
+        take_count = min(take_count, len(froc_x))
+        froc_x = froc_x[:take_count]
+        froc_y = froc_y[:take_count]
+        draw_full(froc_x, froc_y, '#FF6D6C', 'D < 10 mm', '-.', 1, True)
+        area_small = AUC(froc_x, froc_y, normalize=True)
+
+        froc_x, froc_y = interpolate_FROC_data(data[..., 4], data[..., 2], max_fp=8)
+        take_count = len(froc_x[froc_x>0])+1
+        take_count = min(take_count, len(froc_x))
+        froc_x = froc_x[:take_count]
+        froc_y = froc_y[:take_count]
+        draw_full(froc_x, froc_y, '#FF0000', 'D < 15 mm', '-', 1, True)
+        area_big = AUC(froc_x, froc_y, normalize=True)
+
+
 
     # if len(data_s) == 0:
     #     print('Inference result for small is empty.')
@@ -221,10 +267,7 @@ def calculate_FROC(root, npy_dir, npy_format, size_threshold=0, th_step=0.05):
     # plt.grid(b=True, which='major', axis='x')
     plt.ylabel('Sensitivity')
     plt.xlabel('False Positive Per Pass')
-    #plt.savefig('froc_test.png')
-    return area, plt
-    #plt.show()
-
+    return area_small, area_big, plt
 
 def _parse_args():
     parser = argparse.ArgumentParser()
@@ -250,4 +293,4 @@ if __name__ == '__main__':
     args = _parse_args()
     root = args.root
     main(args)
-    calculate_FROC(root, npy_dir, npy_format)
+    area_small, area_big, plt = calculate_FROC(root, npy_dir, npy_format)

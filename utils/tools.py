@@ -332,9 +332,6 @@ def CIOU_xyzwhd_torch(boxes1,boxes2):
             torch.atan((boxes2_size[..., 0] / torch.clamp(boxes2_size[..., 1],min = 1e-6))), 2)
         alpha = v / (1-ious+v)
 
-
-    #cal ciou
-    #ciou dosen't need square root when calculate distance?
     cious = ious - center_dis / outer_diagonal_line #( + alpha*v)
 
     return cious
