@@ -17,7 +17,7 @@ def check_size(axis, size):
 def interpolate_FROC_data(froc_x, froc_y, max_fp):
         y_interpolate = 0
         take_i = 0
-        for i in range(len(data)):
+        for i in range(len(froc_x)):
             FP = froc_x[i]
             if FP<=max_fp:
                 take_i = i
@@ -45,6 +45,16 @@ def interpolate_FROC_data(froc_x, froc_y, max_fp):
             froc_x = np.insert(froc_x, 0, 8)
             froc_y = np.insert(froc_y, 0, y_interpolate)
         return froc_x, froc_y
+def froc_take_max(froc_x, froc_y):
+    froc_x_tmp = []
+    froc_y_tmp = []
+    for i in range(len(froc_x)):
+        if i==0 or froc_x_tmp[-1] > froc_x[i]:
+            froc_x_tmp.append(froc_x[i])
+            froc_y_tmp.append(froc_y[i])
+    froc_x = np.array(froc_x_tmp)
+    froc_y = np.array(froc_y_tmp)
+    return froc_x, froc_y
 
 def calculate_FROC(root, npy_dir, npy_format, size_threshold=0, th_step=0.05):
     #size_threshold is 20 in thesis
@@ -223,24 +233,18 @@ def calculate_FROC(root, npy_dir, npy_format, size_threshold=0, th_step=0.05):
     data_s = np.array(PERF_per_thre_s)
 
     plt.rc('font',family='Times New Roman', weight='bold')
-
+    area_small, area_big = 0, 0
     if len(data) == 0:
         print('Inference result is empty.')
         area = 0
     else:
         froc_x, froc_y = interpolate_FROC_data(data[..., 7], data[..., 5], max_fp=8)
-        take_count = len(froc_x[froc_x>0])+1
-        take_count = min(take_count, len(froc_x))
-        froc_x = froc_x[:take_count]
-        froc_y = froc_y[:take_count]
+        froc_x, froc_y = froc_take_max(froc_x, froc_y)
         draw_full(froc_x, froc_y, '#FF6D6C', 'D < 10 mm', '-.', 1, True)
         area_small = AUC(froc_x, froc_y, normalize=True)
 
         froc_x, froc_y = interpolate_FROC_data(data[..., 4], data[..., 2], max_fp=8)
-        take_count = len(froc_x[froc_x>0])+1
-        take_count = min(take_count, len(froc_x))
-        froc_x = froc_x[:take_count]
-        froc_y = froc_y[:take_count]
+        froc_x, froc_y = froc_take_max(froc_x, froc_y)
         draw_full(froc_x, froc_y, '#FF0000', 'D < 15 mm', '-', 1, True)
         area_big = AUC(froc_x, froc_y, normalize=True)
 
