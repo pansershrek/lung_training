@@ -148,8 +148,8 @@ class CSPStage(nn.Module):
 class CSPDarknet53(nn.Module):
     def __init__(self, in_channel, stem_channels=32, feature_channels=[64, 128, 256, 512, 1024], num_features=3,weight_path=None, resume=False, dims=2):
         super(CSPDarknet53, self).__init__()
-        stem_channels = 16
-        channel_factor = stem_channels/32
+        stem_channels = 4
+        channel_factor = 1/16
         feature_channels = [int(_ * (channel_factor)) for _ in feature_channels]
         self.stem_conv = Convolutional(in_channel, stem_channels, 3, dims=dims)
         #self.stem_conv = Convolutional(in_channel, stem_channels, kernel_size=7, stride=2, dims=dims)

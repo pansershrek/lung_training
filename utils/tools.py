@@ -191,7 +191,7 @@ def iou_xyxy_numpy(boxes1, boxes2):
     inter_section = np.maximum(right_down - left_up, 0.0)
     inter_area = np.multiply.reduce(inter_section, axis=-1)
     union_area = boxes1_area + boxes2_area - inter_area
-    IOU = 1.0 * inter_area / (union_area+1e-3)
+    IOU = inter_area / (union_area+1e-3)
     return IOU
 
 
@@ -305,7 +305,7 @@ def CIOU_xyzwhd_torch(boxes1,boxes2):
     inter_section = torch.max(inter_right_down - inter_left_up, torch.zeros_like(inter_right_down))
     inter_area = inter_section[..., 0] * inter_section[..., 1] * inter_section[..., 2]
     union_area = boxes1_area + boxes2_area - inter_area
-    ious = 1.0 * inter_area / union_area
+    ious = inter_area / union_area
 
     # cal outer boxes
     outer_left_up = torch.min(boxes1[..., :3], boxes2[..., :3])
@@ -385,7 +385,7 @@ def IOU_xywh_torch(boxes1,boxes2):
     else:
         inter_area = inter_section[..., 0] * inter_section[..., 1]
     union_area = boxes1_area + boxes2_area - inter_area
-    ious = 1.0 * inter_area / (union_area+1e-3)
+    ious = inter_area / (union_area+1e-3)
     #box1_nonzero = boxes1.reshape([-1, 6])
     #box1_nonzero = [k for k in box1_nonzero if k[0] > 0]
     #box2_nonzero = boxes2.reshape([-1, 6])
