@@ -107,7 +107,7 @@ class Evaluator(object):
         else:
             bboxes = self.__predict(img, self.val_shape, (0, np.inf))
 
-        bboxes = nms(bboxes, self.conf_thresh, self.nms_thresh, self.box_top_k)
+        bboxes = nms(bboxes, score_threshold=self.conf_thresh, iou_threshold=self.nms_thresh, box_top_k=self.box_top_k)
 
         return bboxes
 

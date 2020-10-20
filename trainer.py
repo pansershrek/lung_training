@@ -74,18 +74,20 @@ class Trainer(object):
                                                           lr_init=cfg.TRAIN["LR_INIT"],
                                                           lr_min=cfg.TRAIN["LR_END"],
                                                           warmup=cfg.TRAIN["WARMUP_EPOCHS"]*len(self.train_dataloader))
-        if resume: self.__load_resume_weights(weight_path)
+        if weight_path:
+            if resume: self.__load_resume_weights(weight_path, load_as_pretrained=False)
+            if not resume: self.__load_resume_weights(weight_path, load_as_pretrained=True)
         self.logger.info(self.model)
-    def __load_resume_weights(self, weight_path):
-
+    def __load_resume_weights(self, weight_path, load_as_pretrained):
         last_weight = os.path.join(weight_path)
         chkpt = torch.load(last_weight, map_location=self.device)
         self.model.load_state_dict(chkpt['model'])
-        if chkpt['epoch'] is not None:
-            self.start_epoch = chkpt['epoch'] + 1
-        if chkpt['optimizer'] is not None:
-            self.optimizer.load_state_dict(chkpt['optimizer'])
-            self.best_mAP = chkpt['best_mAP']
+        if not load_as_pretrained:
+            if chkpt['epoch'] is not None:
+                self.start_epoch = chkpt['epoch'] + 1
+            if chkpt['optimizer'] is not None:
+                self.optimizer.load_state_dict(chkpt['optimizer'])
+                self.best_mAP = chkpt['best_mAP']
         del chkpt
 
     def __save_model_weights(self, epoch, mAP):
@@ -122,7 +124,6 @@ class Trainer(object):
             logger.info("===Epoch:[{}/{}]===".format(epoch, self.epochs))
             for i, (imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names)  in tqdm(enumerate(self.train_dataloader)):
                 self.scheduler.step(len(self.train_dataloader)*epoch + i)
-                break
                 imgs = imgs.to(self.device)
                 label_sbbox = label_sbbox.to(self.device)
                 label_mbbox = label_mbbox.to(self.device)
@@ -177,9 +178,9 @@ class Trainer(object):
                 if writer:
                     writer.add_scalar('AUC_10mm', area_small, epoch)
                     writer.add_scalar('AUC_15mm', area_big, epoch)
-                self.__save_model_weights(epoch, area)
+                self.__save_model_weights(epoch, area_big)
                 logger.info('save weights done')
-                logger.info("  ===test AUC:{:.3f}".format(area))
+                logger.info("  ===test AUC:{:.3f}".format(area_big))
 
             end = time.time()
             logger.info("  ===cost time:{:.4f}s".format(end - start))
@@ -209,7 +210,7 @@ class Trainer(object):
                     self.evaluator.store_bbox(img_name, bboxes_prd)
             npy_dir = pred_result_path
             npy_format = npy_dir + '/{}_0.npy'
-            area_small, area_big, plt = calculate_FROC(self.data_root, npy_dir, npy_format, size_threshold=20, th_step=0.025)
+            area_small, area_big, plt = calculate_FROC(self.data_root, npy_dir, npy_format, size_threshold=20, th_step=0.01)
             plt.savefig(os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
         end = time.time()
         logger.info("  ===cost time:{:.4f}s".format(end - start))
