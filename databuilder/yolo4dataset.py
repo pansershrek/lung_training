@@ -133,7 +133,7 @@ class YOLO4_3DDataset(Dataset):
         for i in range(3):
             label[i][..., 7] = 1.0
 
-        bboxes_yxhw = [np.zeros((150, 6)) for _ in range(3)]   # Darknet the max_num is 30
+        bboxes_yxhw = [np.zeros((15, 6)) for _ in range(3)]   # Darknet the max_num is 30
         bbox_count = np.zeros((3,))
 
         for bbox in bboxes:
@@ -175,7 +175,8 @@ class YOLO4_3DDataset(Dataset):
                     label[i][zind, yind, xind, iou_mask, 7:8] = bbox_mix
                     label[i][zind, yind, xind, iou_mask, 8:] = one_hot_smooth
 
-                    bbox_ind = int(bbox_count[i] % 150)  # BUG : 150为一个先验值,内存消耗大
+                    #bbox_ind = int(bbox_count[i] % 15)  # BUG : 150为一个先验值,内存消耗大
+                    bbox_ind = int(bbox_count[i])
                     bboxes_yxhw[i][bbox_ind, :6] = bbox_yxhw
                     bbox_count[i] += 1
 
@@ -193,7 +194,8 @@ class YOLO4_3DDataset(Dataset):
                 label[best_detect][zind, yind, xind, best_anchor, 7:8] = bbox_mix
                 label[best_detect][zind, yind, xind, best_anchor, 8:] = one_hot_smooth
 
-                bbox_ind = int(bbox_count[best_detect] % 150)
+                #bbox_ind = int(bbox_count[best_detect] % 15)
+                bbox_ind = int(bbox_count[best_detect])
                 bboxes_yxhw[best_detect][bbox_ind, :6] = bbox_yxhw
                 bbox_count[best_detect] += 1
 
