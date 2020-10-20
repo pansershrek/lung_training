@@ -13,17 +13,17 @@ ATTENTION = {"TYPE": 'NONE'}  #attention type:SEnet、CBAM or NONE
 # train
 TRAIN = {
          "DATA_TYPE": 'ABUS',  #DATA_TYPE: VOC ,COCO or Customer
-         "TRAIN_IMG_SIZE": (256, 64, 256),#(256, 64, 256),
+         "TRAIN_IMG_SIZE": (640, 160, 640),#(256, 64, 256),
          "AUGMENT": True,
          "BATCH_SIZE": 1,
          "MULTI_SCALE_TRAIN": False,
          "IOU_THRESHOLD_LOSS": 0.5,
-         "YOLO_EPOCHS": 5000,
+         "YOLO_EPOCHS": 500,
          "Mobilenet_YOLO_EPOCHS": 120,
          "NUMBER_WORKERS": 6,
          "MOMENTUM": 0.9,
          "WEIGHT_DECAY": 0.0005,
-         "LR_INIT": 1e-4, #1e-4,
+         "LR_INIT": 5e-5, #1e-4,
          "LR_END": 1e-6,
          "WARMUP_EPOCHS": 2  # or None
          }
@@ -32,7 +32,7 @@ TRAIN = {
 # val
 VAL = {
         #"TEST_IMG_SIZE": 416,
-        "TEST_IMG_SIZE": (256, 64, 256),#(256, 64, 256), #
+        "TEST_IMG_SIZE": (640, 160, 640),#(256, 64, 256), #
         "BATCH_SIZE": 1,
         "NUMBER_WORKERS": 6,
         "CONF_THRESH": 0.03, #0.005,
