@@ -46,7 +46,7 @@ if __name__ == "__main__":
     weight_path = opt.weight_path
     trainer = Trainer(weight_path=weight_path,
             checkpoint_save_dir=checkpoint_save_dir,
-            resume=True,
+            resume=False,
             gpu_id=opt.gpu_id,
             accumulate=1,
             fp_16=opt.fp_16,

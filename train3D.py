@@ -55,7 +55,7 @@ if __name__ == "__main__":
             gpu_id=opt.gpu_id,
             accumulate=opt.accumulate,
             fp_16=opt.fp_16,
-            writer=writerwriter,
+            writer=writer,
             logger=logger)
 
     trainer.train()
