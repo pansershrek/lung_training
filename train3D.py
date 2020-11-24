@@ -37,9 +37,10 @@ if __name__ == "__main__":
     parser.add_argument('--accumulate', type=int, default=1, help='batches to accumulate before optimizing')
     parser.add_argument('--fp_16', type=bool, default=False, help='whither to use fp16 precision')
     parser.add_argument('--exp_name', type=str, default='debug', help='log experiment name')
+    parser.add_argument('--crx_valid', type=int, default=0)
     opt = parser.parse_args()
     writer = SummaryWriter(log_dir=opt.log_path + '/' + opt.exp_name)
-    logger = Logger(log_file_name=opt.log_path + '/log.txt', log_level=logging.DEBUG, logger_name='YOLOv4').get_log()
+    logger = Logger(log_file_name=opt.log_path + '/' + opt.exp_name + '/log.txt', log_level=logging.DEBUG, logger_name='YOLOv4').get_log()
     checkpoint_save_dir = 'checkpoint/' + opt.exp_name
     if not os.path.exists(checkpoint_save_dir):
         os.mkdir(checkpoint_save_dir)
@@ -49,13 +50,16 @@ if __name__ == "__main__":
 
     #resume = True
     #weight_path = 'checkpoint/YOLO_ABUS_d30_Stem16_lr25/backup_epoch140.pt'
-    trainer = Trainer(weight_path=weight_path,
+    trainer = Trainer(testing_mode=0,
+            weight_path=weight_path,
             checkpoint_save_dir=checkpoint_save_dir,
             resume=resume,
             gpu_id=opt.gpu_id,
             accumulate=opt.accumulate,
             fp_16=opt.fp_16,
             writer=writer,
-            logger=logger)
+            logger=logger,
+            crx_fold_num=opt.crx_valid
+            )
 
     trainer.train()

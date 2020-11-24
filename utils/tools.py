@@ -486,6 +486,15 @@ def nms(bboxes, score_threshold, iou_threshold, sigma=0.3, method='nms', box_top
         classes_in_img = list(set(bboxes[:, 7].astype(np.int32)))
     else:
         classes_in_img = list(set(bboxes[:, 5].astype(np.int32)))
+    top_k_bboxes = []
+    if len(bboxes) > 20:
+        print(len(bboxes), " bboxes before nms")
+        for idx in bboxes[:, 6].argsort()[-500:][::-1]:
+            best_bbox = bboxes[idx]
+            top_k_bboxes.append(best_bbox)
+
+        bboxes = np.array(top_k_bboxes)
+
     classes_in_img = [_ for _ in classes_in_img if not _==0]
     best_bboxes = []
     score_top_k_list = []
@@ -521,6 +530,8 @@ def nms(bboxes, score_threshold, iou_threshold, sigma=0.3, method='nms', box_top
                 cls_bboxes[:, 4] = cls_bboxes[:, 4] * weight
                 score_mask = cls_bboxes[:, 4] > score_threshold
             cls_bboxes = cls_bboxes[score_mask]
+            if len(best_bboxes) >= box_top_k:
+                break
     best_bboxes = np.array(best_bboxes)
     top_k_bboxes = []
     print(len(best_bboxes), " bboxes after nms")

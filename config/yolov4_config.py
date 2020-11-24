@@ -1,8 +1,8 @@
 # coding=utf-8
 # project
-DATA_PATH = "/data/Hiola/YOLOv4-pytorch/dataset_link"
-PROJECT_PATH = "/data/Hiola/YOLOv4-pytorch/data"
-DETECTION_PATH = "/data/Hiola/YOLOv4-pytorch"
+DATA_PATH = "/home/lab402/p08922003/YOLOv4-pytorch/dataset_link"
+PROJECT_PATH = "/home/lab402/p08922003/YOLOv4-pytorch/data"
+DETECTION_PATH = "/home/lab402/p08922003/YOLOv4-pytorch"
 
 MODEL_TYPE = {"TYPE": 'YOLOv4'}  #YOLO type:YOLOv4, Mobilenet-YOLOv4 or Mobilenetv3-YOLOv4
 MODEL_INPUT_CHANNEL = 1
@@ -13,29 +13,29 @@ ATTENTION = {"TYPE": 'NONE'}  #attention type:SEnet、CBAM or NONE
 # train
 TRAIN = {
          "DATA_TYPE": 'ABUS',  #DATA_TYPE: VOC ,COCO or Customer
-         "TRAIN_IMG_SIZE": (640, 160, 640),#(256, 64, 256),
+         "TRAIN_IMG_SIZE": (640, 160, 640), #(96, 96, 96), #(640, 160, 640),#(256, 64, 256),
          "AUGMENT": True,
-         "BATCH_SIZE": 1,
+         "BATCH_SIZE": 1, #2,
          "MULTI_SCALE_TRAIN": False,
          "IOU_THRESHOLD_LOSS": 0.5,
-         "YOLO_EPOCHS": 500,
+         "YOLO_EPOCHS": 1000,
          "Mobilenet_YOLO_EPOCHS": 120,
-         "NUMBER_WORKERS": 6,
+         "NUMBER_WORKERS": 0,
          "MOMENTUM": 0.9,
          "WEIGHT_DECAY": 0.0005,
          "LR_INIT": 5e-5, #1e-4,
          "LR_END": 1e-6,
-         "WARMUP_EPOCHS": 2  # or None
+         "WARMUP_EPOCHS": 2 #40  # or None
          }
 
 
 # val
 VAL = {
         #"TEST_IMG_SIZE": 416,
-        "TEST_IMG_SIZE": (640, 160, 640),#(256, 64, 256), #
+        "TEST_IMG_SIZE": (640, 160, 640), #(640, 160, 640),#(256, 64, 256), #
         "BATCH_SIZE": 1,
-        "NUMBER_WORKERS": 6,
-        "CONF_THRESH": 0.03, #0.005,
+        "NUMBER_WORKERS": 3,
+        "CONF_THRESH": 0.01, #0.005,
         "NMS_THRESH": 0.45,
         "MULTI_SCALE_VAL": True,
         "FLIP_VAL": True,

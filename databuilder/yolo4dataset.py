@@ -16,6 +16,7 @@ import cv2
 from skimage.io import imread, imsave
 import torch.nn.functional as F
 from utils.tools import xyzwhd2xyzxyz
+from PIL import Image, ImageFont, ImageDraw
 def gray2rgb(image):
             w, h = image.shape
             image += np.abs(np.min(image))
@@ -65,46 +66,82 @@ class YOLO4_3DDataset(Dataset):
 
         del img_org, bboxes_org
         img_size = self.img_size
-        img = torch.from_numpy(img).float()
-
-        if len(img.size())==4:
-            org_img_shape = img.size()[:3]
-            if (img_size==org_img_shape):
-                pass
-            else:
-                img = img.permute((3, 0, 1, 2)).unsqueeze(0)
-                img = F.interpolate(img, size=img_size, mode='trilinear')
-                img = img[0]
-                img = img.permute((1, 2, 3, 0))
+        #img = torch.from_numpy(img).float()
+        if len(img.size())==5:
+            #img is a batch of data, doesn't need resize
+            pass
         else:
-            org_img_shape = img.size()[:2]
-            if (img_size==org_img_shape):
-                pass
+            if len(img.size())==4 or len(img.size())==5:
+                org_img_shape = img.size()[:3]
+                if (img_size==org_img_shape):
+                    pass
+                else:
+                    img = img.permute((3, 0, 1, 2)).unsqueeze(0)
+                    img = F.interpolate(img, size=img_size, mode='trilinear')
+                    img = img[0]
+                    img = img.permute((1, 2, 3, 0))
             else:
-                img = img.permute((2, 0, 1)).unsqueeze(0)
-                img = F.interpolate(img, size=img_size, mode='bilinear')
-                img = img[0]
-                img = img.permute((1, 2, 0))
-        if len(img.size())==4:
-            resized_boxes = bboxes[:, :6] + 0.0
-            for i in range(3): #3D
-                resized_boxes[:, i::3] = resized_boxes[:, i::3] * img_size[i] / org_img_shape[i]
-            bboxes[:, :6] = resized_boxes
-        else:
-            resized_boxes = bboxes[:, :4] + 0.0
-            for i in range(2): #2D
-                resized_boxes[:, i::2] = resized_boxes[:, i::2] * img_size[i] / org_img_shape[i]
-            bboxes[:, :4] = resized_boxes
-        label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self.__creat_label(bboxes, img_size)
-        label_sbbox = torch.from_numpy(label_sbbox).float()
-        label_mbbox = torch.from_numpy(label_mbbox).float()
-        label_lbbox = torch.from_numpy(label_lbbox).float()
+                org_img_shape = img.size()[:2]
+                if (img_size==org_img_shape):
+                    pass
+                else:
+                    img = img.permute((2, 0, 1)).unsqueeze(0)
+                    img = F.interpolate(img, size=img_size, mode='bilinear')
+                    img = img[0]
+                    img = img.permute((1, 2, 0))
+            if len(img.size())==4:
+                resized_boxes = bboxes[:, :6] + 0.0
+                for i in range(3): #3D
+                    resized_boxes[:, i::3] = resized_boxes[:, i::3] * img_size[i] / org_img_shape[i]
+                bboxes[:, :6] = resized_boxes
+            else:
+                resized_boxes = bboxes[:, :4] + 0.0
+                for i in range(2): #2D
+                    resized_boxes[:, i::2] = resized_boxes[:, i::2] * img_size[i] / org_img_shape[i]
+                bboxes[:, :4] = resized_boxes
 
-        sbboxes = torch.from_numpy(sbboxes).float()
-        mbboxes = torch.from_numpy(mbboxes).float()
-        lbboxes = torch.from_numpy(lbboxes).float()
-        img = img.permute((3, 0, 1, 2))
-        return img, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name
+        if 0:
+            boxes = bboxes
+            scale = [1, 1, 1]
+            ori_data = img
+            for i in range(int(boxes[0][0][2]), int(boxes[0][0][5]), 3):
+                #TY Image
+                img = Image.fromarray(((ori_data[0].squeeze().numpy() * 255.0).astype('uint8'))[:,:,i], 'L')
+                #img = Image.fromarray(TY_ori_data[i,:,:], 'L')
+                img = img.convert(mode='RGB')
+                draw = ImageDraw.Draw(img)
+                scale = [1, 1, 1]
+                for bx in boxes[0]:
+                    z_bot, z_top, y_bot, y_top, x_bot, x_top =bx[0]*scale[0], bx[3]*scale[0], bx[1]*scale[1], bx[4]*scale[1], bx[2]*scale[2], bx[5]*scale[2]
+                    if int(x_bot) <= i <= int(x_top):
+                        draw.rectangle(
+                            [(y_bot, z_bot),(y_top, z_top)],
+                            outline ="red", width=2)
+                img.save('debug/TY_' + str(i)+'.png')
+
+        list_label_sbbox, list_label_mbbox, list_label_lbbox, list_sbboxes, list_mbboxes, list_lbboxes = [],[],[],[],[],[]
+        for i in range(len(bboxes)):
+            label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self.__creat_label(bboxes[i], img_size)
+            label_sbbox = torch.from_numpy(label_sbbox).float()
+            label_mbbox = torch.from_numpy(label_mbbox).float()
+            label_lbbox = torch.from_numpy(label_lbbox).float()
+
+            sbboxes = torch.from_numpy(sbboxes).float()
+            mbboxes = torch.from_numpy(mbboxes).float()
+            lbboxes = torch.from_numpy(lbboxes).float()
+
+            list_label_sbbox.append(label_sbbox)
+            list_label_mbbox.append(label_mbbox)
+            list_label_lbbox.append(label_lbbox)
+            list_sbboxes.append(sbboxes)
+            list_mbboxes.append(mbboxes)
+            list_lbboxes.append(lbboxes)
+        list_label_sbbox, list_label_mbbox, list_label_lbbox, list_sbboxes, list_mbboxes, list_lbboxes = \
+            torch.stack(list_label_sbbox), torch.stack(list_label_mbbox), torch.stack(list_label_lbbox), \
+            torch.stack(list_sbboxes), torch.stack(list_mbboxes), torch.stack(list_lbboxes)
+        #to B,C,X,Y,Z
+        img = img.permute((0, 4, 1, 2, 3))
+        return img, list_label_sbbox, list_label_mbbox, list_label_lbbox, list_sbboxes, list_mbboxes, list_lbboxes, img_name
 
     def __creat_label(self, bboxes, img_size):
         """

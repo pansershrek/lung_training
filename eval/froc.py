@@ -231,7 +231,7 @@ def calculate_FROC(root, npy_dir, npy_format, size_threshold=0, th_step=0.05):
 
     data = np.array(PERF_per_thre)
     data_s = np.array(PERF_per_thre_s)
-
+    plt.figure()
     plt.rc('font',family='Times New Roman', weight='bold')
     area_small, area_big = 0, 0
     if len(data) == 0:

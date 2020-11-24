@@ -1,6 +1,7 @@
 
 
-from .abus_data import AbusNpyFormat
+from .abus_data_eason import AbusNpyFormat
+#from .abus_data import AbusNpyFormat
 from .image3d import ImageDetect3DDataset
 from .bounding_box import BoxList
 import torch
@@ -30,13 +31,13 @@ class ABUSDetectionDataset(Dataset):
             and returns a transformed version.
     """
     # read from AbusNpyFormat(root, annFile)
-    def __init__(self, root, transform=None, target_transform=None, transforms=None, \
+    def __init__(self, testing_mode, root, transform=None, target_transform=None, transforms=None, \
             crx_valid=False, crx_fold_num=0, crx_partition='train', \
-            augmentation=False, include_fp=False):
+            augmentation=False, include_fp=False, batch_size=0):
 
-        self.abusNpy = AbusNpyFormat(root, \
+        self.abusNpy = AbusNpyFormat(testing_mode, root, \
             crx_valid, crx_fold_num, crx_partition, \
-            augmentation, include_fp)
+            augmentation, include_fp, batch_size)
 
     def __len__(self):
         return len(self.abusNpy)
@@ -45,20 +46,29 @@ class ABUSDetectionDataset(Dataset):
         return [0, 1] #background=0  tumor=1
 
     def __getitem__(self, index):
-        img, target = self.abusNpy[index]
-        anno = []
-        for item in target:
-            x1 = item['x_bot']
-            y1 = item['y_bot']
-            z1 = item['z_bot']
-            x2 = item['x_top']
-            y2 = item['y_top']
-            z2 = item['z_top']
-            category_id=1
-            bbox_mix = 1.
-            anno.append([z1, y1, x1, z2, y2, x2, category_id, bbox_mix])
-        #data and notation in ZYXC shape
-        return (img.permute(1,2,3,0).float() / 255.0).numpy(), np.array(anno, dtype=np.float32), self.abusNpy.getID(index)
+        imgs, targets = self.abusNpy[index]
+        #return_img = []
+        return_anno = []
+        return_id = []
+        for img, target in zip(imgs, targets):
+            anno = []
+            for item in target:
+                x1 = item['x_bot']
+                y1 = item['y_bot']
+                z1 = item['z_bot']
+                x2 = item['x_top']
+                y2 = item['y_top']
+                z2 = item['z_top']
+                category_id=1
+                bbox_mix = 1.
+                anno.append([z1, y1, x1, z2, y2, x2, category_id, bbox_mix])
+            #data and notation in ZYXC shape
+            #return_img.append((img.permute(1,2,3,0).float() / 255.0).numpy())
+            #return_img.append(img.numpy())
+            return_anno.append(np.array(anno, dtype=np.float32))
+            return_id.append(self.abusNpy.getID(index))
+        #np.array(return_img)
+        return imgs, np.array(return_anno), return_id
 
     def get_img_info(self, index):
         return {'height':self.abusNpy.img_size[0], \

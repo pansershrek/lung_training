@@ -2,38 +2,49 @@ import os
 import numpy as np
 import torch
 from torch.utils import data
+import logging
 class AbusNpyFormat(data.Dataset):
-    def __init__(self, root, enable_CV=False, crx_fold_num=0, crx_partition='train', augmentation=False, include_fp=False):
+    def __init__(self, testing_mode, root, enable_CV=False, crx_fold_num=0, crx_partition='train', augmentation=False, include_fp=False, batch_size=0):
         self.root = root.rstrip('/') + '/'
-        if include_fp:
-            print('FP training mode...')
-            with open(self.root + 'annotations/fp_{}.txt'.format(crx_fold_num), 'r') as f:
-                lines = f.read().splitlines()
-        else:
-            print('Normal mode....')
-            with open(self.root + 'annotations/rand_all.txt', 'r') as f:
-                lines = f.read().splitlines()
+        fold_list_root = '/home/lab402/User/eason_thesis/program_update_v1/5_fold_list/'
+        EASON = 1
+        if EASON:
+            file_part = 'val' if crx_partition=='valid' else crx_partition
+            if testing_mode==1 and file_part=='val':
+                file_part = 'test'
+            fold_list_file = fold_list_root + 'five_fold_{}_{}.txt'.format(file_part, crx_fold_num)
 
-        folds = []
-        self.gt = []
-        if enable_CV:
-            assert crx_partition in ['train', 'valid'] , 'crx_partition must be train or valid with type str when cross validation enabled '
-            for fi in range(5):
-                if fi == 4:
-                    folds.append(lines[int(fi*0.2*len(lines)):])
-                else:
-                    folds.append(lines[int(fi*0.2*len(lines)):int((fi+1)*0.2*len(lines))])
-            #folds=[f0, f1, f2, f3, f4]
-            cut_set = folds.pop(crx_fold_num)
-            if crx_partition == 'train':
-                for li in folds:
-                    self.gt += li
-            elif crx_partition == 'valid':
-                self.gt = cut_set
-        else:
-            self.gt = lines
+            with open(fold_list_file, 'r') as f:
+                self.gt = f.read().splitlines()
+            self.gt = [_.replace('/home/lab402/User/eason_thesis/ABUS_data/', '') for _ in self.gt]
+        if 0:
+            if include_fp:
+                print('FP training mode...')
+                with open(self.root + 'annotations/fp_{}.txt'.format(crx_fold_num), 'r') as f:
+                    lines = f.read().splitlines()
+            else:
+                print('Normal mode....')
+                with open(self.root + 'annotations/rand_all.txt', 'r') as f:
+                    lines = f.read().splitlines()
 
-
+            folds = []
+            self.gt = []
+            if enable_CV:
+                assert crx_partition in ['train', 'valid'] , 'crx_partition must be train or valid with type str when cross validation enabled '
+                for fi in range(5):
+                    if fi == 4:
+                        folds.append(lines[int(fi*0.2*len(lines)):])
+                    else:
+                        folds.append(lines[int(fi*0.2*len(lines)):int((fi+1)*0.2*len(lines))])
+                #folds=[f0, f1, f2, f3, f4]
+                cut_set = folds.pop(crx_fold_num)
+                if crx_partition == 'train':
+                    for li in folds:
+                        self.gt += li
+                elif crx_partition == 'valid':
+                    self.gt = cut_set
+            else:
+                self.gt = lines
         self.set_size = len(self.gt)
         self.aug = augmentation
         self.img_size = (640,160,640)
@@ -69,7 +80,8 @@ class AbusNpyFormat(data.Dataset):
         # for box in boxes:
         #     if box['z_bot'] <= 0 or box['x_bot'] <= 0:
         #         print("A box is out of bound...")
-        return data, boxes
+        data = data.permute((1, 2, 3, 0)).unsqueeze(dim=0)
+        return (data/255.0), [boxes]
 
     def __len__(self):
         if self.aug:
