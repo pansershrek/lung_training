@@ -65,7 +65,7 @@ if __name__ == "__main__":
             if testing_mode: phase = 'TEST'
             writer = SummaryWriter(log_dir=opt.log_path + '/{}_'.format(phase) + opt.exp_name)
 
-            for epoch in range(20):
+            for epoch in range(4, 20):
                 weight_path = '{}/backup_epoch{}.pt'.format(checkpoint_folder, str(epoch))
                 if os.path.exists(weight_path):
                     opt.weight_path = weight_path
@@ -83,7 +83,7 @@ if __name__ == "__main__":
                         os.mkdir(checkpoint_save_dir)
 
                     weight_path = opt.weight_path
-                    weight_path = 'checkpoint/96_B4_F1/backup_epoch150.pt'
+                    #weight_path = 'checkpoint/96_B4_F1/backup_epoch150.pt'
                     trainer = Trainer(testing_mode=testing_mode,
                             weight_path=weight_path,
                             checkpoint_save_dir=checkpoint_save_dir,

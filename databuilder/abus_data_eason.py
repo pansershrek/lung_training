@@ -487,7 +487,7 @@ class AbusNpyFormat(data.Dataset):
         num_classes = 1 #num_classes = len(class_names)
         #anchors = get_anchors(anchors_path)
         anchors = [[29., 19., 14.], [24., 30., 32.], [46., 28., 30.], [46., 31., 18.], [57., 43., 44.], [77., 62., 54.]]
-        train_set = train_set[:100]
+        #train_set = train_set[:100]
         self.eason_training_data = data_generator_wrapper(
                                     train_set, batch_size, sub_batch_size, input_shape, anchors, num_classes, train_BG=False, GT_num=sub_batch_size)
 
@@ -502,7 +502,7 @@ class AbusNpyFormat(data.Dataset):
         self.root = root.rstrip('/') + '/'
 
         EASON = 1
-        if 1 and EASON:
+        if 1 and EASON:#for 640
             file_part = 'val' if crx_partition=='valid' else crx_partition
             if testing_mode==1 and file_part=='val':
                 file_part = 'test'
@@ -511,6 +511,7 @@ class AbusNpyFormat(data.Dataset):
             with open(fold_list_file, 'r') as f:
                 self.gt = f.read().splitlines()
             self.gt = [_.replace('/home/lab402/User/eason_thesis/ABUS_data/', '') for _ in self.gt]
+            self.set_size = len(self.gt)
         if 0:
             if include_fp:
                 print('FP training mode...')
@@ -540,7 +541,7 @@ class AbusNpyFormat(data.Dataset):
             else:
                 self.gt = lines
 
-        #self.set_size = 0 #len(self.gt)
+            self.set_size = len(self.gt)
         self.aug = False #augmentation
         self.img_size = (640,160,640) #(640,160,640)
         print('Dataset info: Cross-validation {}, partition: {}, fold number {}, data augmentation {}'\
@@ -549,7 +550,7 @@ class AbusNpyFormat(data.Dataset):
     def get_data_lines(self):
         return self.val_set
     def __getitem__(self, index):
-        Load_TY = 1
+        Load_TY = 1 #for 640
         if Load_TY:
             # 0: original, 1: flip Z, 2: flip X, 3: flip ZX
             aug_mode, index = self._get_aug_index(index)
@@ -608,7 +609,7 @@ class AbusNpyFormat(data.Dataset):
         # for box in boxes:
         #     if box['z_bot'] <= 0 or box['x_bot'] <= 0:
         #         print("A box is out of bound...")
-        Load_EASON = 0
+        Load_EASON = 0 #for 96
         if Load_EASON:
             d = next(self.eason_training_data)
             image_data, box_data = d[0]
@@ -861,7 +862,8 @@ class AbusNpyFormat(data.Dataset):
 
         return data, boxes
     def getID(self, index):
-        return 'unknow'
+        if index >= len(self.gt):
+            return 'unknow'
         aug_mode, index = self._get_aug_index(index)
         return self.getFilePath(index).replace('/', '_') + '_' + str(aug_mode)
 

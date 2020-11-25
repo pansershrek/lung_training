@@ -80,7 +80,8 @@ class AbusNpyFormat(data.Dataset):
         # for box in boxes:
         #     if box['z_bot'] <= 0 or box['x_bot'] <= 0:
         #         print("A box is out of bound...")
-        data = data.permute((1, 2, 3, 0)).unsqueeze(dim=0)
+        #data = data.permute((1, 2, 3, 0)).unsqueeze(dim=0)
+        return data, boxes
         return (data/255.0), [boxes]
 
     def __len__(self):

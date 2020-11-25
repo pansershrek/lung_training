@@ -66,6 +66,49 @@ class YOLO4_3DDataset(Dataset):
 
         del img_org, bboxes_org
         img_size = self.img_size
+
+        img = torch.from_numpy(img).float()
+
+        if len(img.size())==4:
+            org_img_shape = img.size()[:3]
+            if (img_size==org_img_shape):
+                pass
+            else:
+                img = img.permute((3, 0, 1, 2)).unsqueeze(0)
+                img = F.interpolate(img, size=img_size, mode='trilinear')
+                img = img[0]
+                img = img.permute((1, 2, 3, 0))
+        else:
+            org_img_shape = img.size()[:2]
+            if (img_size==org_img_shape):
+                pass
+            else:
+                img = img.permute((2, 0, 1)).unsqueeze(0)
+                img = F.interpolate(img, size=img_size, mode='bilinear')
+                img = img[0]
+                img = img.permute((1, 2, 0))
+        if len(img.size())==4:
+            resized_boxes = bboxes[:, :6] + 0.0
+            for i in range(3): #3D
+                resized_boxes[:, i::3] = resized_boxes[:, i::3] * img_size[i] / org_img_shape[i]
+            bboxes[:, :6] = resized_boxes
+        else:
+            resized_boxes = bboxes[:, :4] + 0.0
+            for i in range(2): #2D
+                resized_boxes[:, i::2] = resized_boxes[:, i::2] * img_size[i] / org_img_shape[i]
+            bboxes[:, :4] = resized_boxes
+        label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self.__creat_label(bboxes, img_size)
+        label_sbbox = torch.from_numpy(label_sbbox).float()
+        label_mbbox = torch.from_numpy(label_mbbox).float()
+        label_lbbox = torch.from_numpy(label_lbbox).float()
+
+        sbboxes = torch.from_numpy(sbboxes).float()
+        mbboxes = torch.from_numpy(mbboxes).float()
+        lbboxes = torch.from_numpy(lbboxes).float()
+        img = img.permute((3, 0, 1, 2))
+        return img, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name
+
+
         #img = torch.from_numpy(img).float()
         if len(img.size())==5:
             #img is a batch of data, doesn't need resize

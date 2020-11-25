@@ -167,9 +167,12 @@ class Evaluator(object):
             dh = (test_input_size[1] - resize_ratio * org_h) / 2
             dw = (test_input_size[2] - resize_ratio * org_w) / 2
 
-            pred_coor[:, 0::3] = 1.0 * (pred_coor[:, 0::3] - dd) / resize_ratio
-            pred_coor[:, 1::3] = 1.0 * (pred_coor[:, 1::3] - dh) / resize_ratio
-            pred_coor[:, 2::3] = 1.0 * (pred_coor[:, 2::3] - dw) / resize_ratio
+            #pred_coor[:, 0::3] = 1.0 * (pred_coor[:, 0::3] - dd) / resize_ratio
+            #pred_coor[:, 1::3] = 1.0 * (pred_coor[:, 1::3] - dh) / resize_ratio
+            #pred_coor[:, 2::3] = 1.0 * (pred_coor[:, 2::3] - dw) / resize_ratio
+            #for i in range(3):
+            #    pred_coor[:, i::3] = 1.0 * (pred_coor[:, i::3]) * (org_img_shape[i] / test_input_size[i])
+
 
         else:
             pred_coor = xywh2xyxy(pred_bbox[:, :4])

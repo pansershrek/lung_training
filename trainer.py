@@ -23,7 +23,7 @@ from eval.cocoapi_evaluator import COCOAPIEvaluator
 from databuilder.abus import ABUSDetectionDataset
 from databuilder.yolo4dataset import YOLO4_3DDataset
 from tqdm import tqdm
-
+from apex import amp
 
 class Trainer(object):
     def __init__(self, testing_mode, weight_path, checkpoint_save_dir, resume, gpu_id, accumulate, fp_16, writer, logger, crx_fold_num):
@@ -183,7 +183,7 @@ class Trainer(object):
                 if self.multi_scale_train and (i+1) % 10 == 0:
                     self.train_dataset.img_size = random.choice(range(10, 20)) * 32
 
-            if epoch % 1==0: #tag:Val
+            if epoch % 1==0: #tag:Val #20
                 if cfg.TRAIN["DATA_TYPE"] == 'VOC' or cfg.TRAIN["DATA_TYPE"] == 'ABUS':
                     area_small, area_big, plt = self.evaluate()
                     logger.info("===== Validate =====".format(epoch, self.epochs))
@@ -214,16 +214,18 @@ class Trainer(object):
         TOP_K = 50
         with torch.no_grad():
             start_time=time.time()
-            if 1:
+            npy_dir = pred_result_path
+            if 0: #for 96
+                npy_format = npy_dir + '/{}'
                 fold_list_root = '/home/lab402/User/eason_thesis/program_update_v1/5_fold_list/'
                 # EASON code
                 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
                 fold_num = self.crx_fold_num
                 val_path = fold_list_root + 'five_fold_val_'+str(fold_num)+'_separate.txt'
-                val_path = fold_list_root + 'five_fold_train_'+str(fold_num)+'_separate.txt'
+                #val_path = fold_list_root + 'five_fold_train_'+str(fold_num)+'_separate.txt'
                 test_path = fold_list_root + 'five_fold_test_'+str(fold_num)+'.txt'
                 val_set = open(val_path).readlines()
-                val_set = val_set[:100]
+                #val_set = val_set[:100]
                 for line in val_set:
                     line = line.split(',', 4)
 
@@ -244,12 +246,14 @@ class Trainer(object):
                     #    bboxes_prd[:, :6] = (bboxes_prd[:, :6] / img.size(1)) * cfg.VAL['TEST_IMG_BBOX_ORIGINAL_SIZE'][0]
                     self.evaluator.store_bbox(img_name, bboxes_prd)
 
-            if 0:
+            if 1: #for 640
+                npy_format = npy_dir + '/{}_0.npy'
                 for i, (imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names)  in tqdm(enumerate(self.test_dataloader)):
-                    imgs = imgs[0]
-                    label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = \
-                        label_sbbox[0], label_mbbox[0], label_lbbox[0], sbboxes[0], mbboxes[0], lbboxes[0]
-                    img_names = [_[0] for _ in img_names]
+                    if 0:
+                        imgs = imgs[0]
+                        label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = \
+                            label_sbbox[0], label_mbbox[0], label_lbbox[0], sbboxes[0], mbboxes[0], lbboxes[0]
+                        img_names = [_[0] for _ in img_names]
                     imgs = imgs.to(self.device)
                     for img, img_name in zip(imgs, img_names):
                         bboxes_prd = self.evaluator.get_bbox(img, multi_test=False, flip_test=False)
@@ -258,9 +262,6 @@ class Trainer(object):
                         self.evaluator.store_bbox(img_name, bboxes_prd)
 
             print("Average time cost: {:.2f} sec.".format((time.time() - start_time)/len(self.test_dataloader)))
-            npy_dir = pred_result_path
-            #npy_format = npy_dir + '/{}_0.npy'
-            npy_format = npy_dir + '/{}'
             area_small, area_big, plt = calculate_FROC(self.data_root, npy_dir, npy_format, size_threshold=20, th_step=0.01)
             plt.savefig(os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
 

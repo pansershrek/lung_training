@@ -15,10 +15,16 @@ TRAIN = {
          "DATA_TYPE": 'ABUS',  #DATA_TYPE: VOC ,COCO or Customer
          "TRAIN_IMG_SIZE": (640, 160, 640), #(96, 96, 96), #(640, 160, 640),#(256, 64, 256),
          "AUGMENT": True,
-         "BATCH_SIZE": 1, #2,
+         #for 640
+         "BATCH_SIZE": 2,
+         #for 96
+         #"BATCH_SIZE": 2,
          "MULTI_SCALE_TRAIN": False,
          "IOU_THRESHOLD_LOSS": 0.5,
-         "YOLO_EPOCHS": 1000,
+         #for 640
+         "YOLO_EPOCHS": 20,
+         #for 96
+         #"YOLO_EPOCHS": 500,
          "Mobilenet_YOLO_EPOCHS": 120,
          "NUMBER_WORKERS": 0,
          "MOMENTUM": 0.9,
@@ -34,7 +40,7 @@ VAL = {
         #"TEST_IMG_SIZE": 416,
         "TEST_IMG_SIZE": (640, 160, 640), #(640, 160, 640),#(256, 64, 256), #
         "BATCH_SIZE": 1,
-        "NUMBER_WORKERS": 3,
+        "NUMBER_WORKERS": 0,
         "CONF_THRESH": 0.01, #0.005,
         "NMS_THRESH": 0.45,
         "MULTI_SCALE_VAL": True,
