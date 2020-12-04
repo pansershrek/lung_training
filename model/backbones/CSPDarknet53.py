@@ -155,15 +155,36 @@ class CSPDarknet53(nn.Module):
         stem_channels = 4
         channel_factor = 1/16 * 5
 
-        #for 1080 96
+        #for 1080 96 #for 96
         #1080Ti
         stem_channels = 4
         channel_factor = 1/16 * 8
 
-        #for 3090 640
+        #for 1080 640 #for 640
+        #1080Ti
+        stem_channels = 2
+        channel_factor = 1/16 * 2 #like shit
+
+        #for 3090 640 #for 96
         #BS2
+        #stem_channels = 4
+        #channel_factor = 1/16 * 4
+
+        #today and in those best day
+
+        #4_4_64
         stem_channels = 4
-        channel_factor = 1/16 * 2
+        channel_factor = 1/16 * 1
+
+        #4_8_128
+        #stem_channels = 4
+        #channel_factor = 1/16 * 2
+
+        #4_16_256
+        #stem_channels = 4
+        #channel_factor = 1/16 * 4
+
+
 
 
 

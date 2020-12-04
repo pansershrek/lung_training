@@ -487,8 +487,8 @@ def nms(bboxes, score_threshold, iou_threshold, sigma=0.3, method='nms', box_top
     else:
         classes_in_img = list(set(bboxes[:, 5].astype(np.int32)))
     top_k_bboxes = []
+    print(len(bboxes), " bboxes before nms")
     if len(bboxes) > 20:
-        print(len(bboxes), " bboxes before nms")
         for idx in bboxes[:, 6].argsort()[-500:][::-1]:
             best_bbox = bboxes[idx]
             top_k_bboxes.append(best_bbox)

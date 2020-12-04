@@ -67,48 +67,6 @@ class YOLO4_3DDataset(Dataset):
         del img_org, bboxes_org
         img_size = self.img_size
 
-        img = torch.from_numpy(img).float()
-
-        if len(img.size())==4:
-            org_img_shape = img.size()[:3]
-            if (img_size==org_img_shape):
-                pass
-            else:
-                img = img.permute((3, 0, 1, 2)).unsqueeze(0)
-                img = F.interpolate(img, size=img_size, mode='trilinear')
-                img = img[0]
-                img = img.permute((1, 2, 3, 0))
-        else:
-            org_img_shape = img.size()[:2]
-            if (img_size==org_img_shape):
-                pass
-            else:
-                img = img.permute((2, 0, 1)).unsqueeze(0)
-                img = F.interpolate(img, size=img_size, mode='bilinear')
-                img = img[0]
-                img = img.permute((1, 2, 0))
-        if len(img.size())==4:
-            resized_boxes = bboxes[:, :6] + 0.0
-            for i in range(3): #3D
-                resized_boxes[:, i::3] = resized_boxes[:, i::3] * img_size[i] / org_img_shape[i]
-            bboxes[:, :6] = resized_boxes
-        else:
-            resized_boxes = bboxes[:, :4] + 0.0
-            for i in range(2): #2D
-                resized_boxes[:, i::2] = resized_boxes[:, i::2] * img_size[i] / org_img_shape[i]
-            bboxes[:, :4] = resized_boxes
-        label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self.__creat_label(bboxes, img_size)
-        label_sbbox = torch.from_numpy(label_sbbox).float()
-        label_mbbox = torch.from_numpy(label_mbbox).float()
-        label_lbbox = torch.from_numpy(label_lbbox).float()
-
-        sbboxes = torch.from_numpy(sbboxes).float()
-        mbboxes = torch.from_numpy(mbboxes).float()
-        lbboxes = torch.from_numpy(lbboxes).float()
-        img = img.permute((3, 0, 1, 2))
-        return img, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name
-
-
         #img = torch.from_numpy(img).float()
         if len(img.size())==5:
             #img is a batch of data, doesn't need resize
@@ -164,7 +122,8 @@ class YOLO4_3DDataset(Dataset):
 
         list_label_sbbox, list_label_mbbox, list_label_lbbox, list_sbboxes, list_mbboxes, list_lbboxes = [],[],[],[],[],[]
         for i in range(len(bboxes)):
-            label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self.__creat_label(bboxes[i], img_size)
+            valid_bboxes = np.array([box for box in bboxes[i] if (not (box[0]==0 and box[3]==0))])
+            label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self.__creat_label(valid_bboxes, img_size)
             label_sbbox = torch.from_numpy(label_sbbox).float()
             label_mbbox = torch.from_numpy(label_mbbox).float()
             label_lbbox = torch.from_numpy(label_lbbox).float()
@@ -203,8 +162,21 @@ class YOLO4_3DDataset(Dataset):
         """
 
         anchors = np.array(cfg.MODEL["ANCHORS3D"])
+        if 0:
+            anchors = [
+                [[77., 62., 54.], [62., 77., 54.], [62., 54., 77.]],
+                [[77., 62., 54.], [62., 77., 54.], [62., 54., 77.]],
+                [[77., 62., 54.], [62., 77., 54.], [62., 54., 77.]],
+                #[[24., 30., 32.], [46., 28., 30.], [46., 31., 18.]],
+                #[[29., 19., 14.], [19., 29., 14.], [14., 19., 29.]],
+            ]
+            anchors = np.array(anchors)
+            anchors[0] = anchors[0] / 8.
+            anchors[1] = anchors[1] / 16.
+            anchors[2] = anchors[2] / 32.
+
         strides = np.array(cfg.MODEL["STRIDES"])
-        train_output_size = img_size / strides
+        #train_output_size = img_size / strides
         anchors_per_scale = cfg.MODEL["ANCHORS_PER_SCLAE"]
         d_xyz = 6
         d_cls = 2

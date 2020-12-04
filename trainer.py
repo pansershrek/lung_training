@@ -51,7 +51,7 @@ class Trainer(object):
 
         self.epochs = cfg.TRAIN["YOLO_EPOCHS"] if cfg.MODEL_TYPE["TYPE"] == 'YOLOv4' else cfg.TRAIN["Mobilenet_YOLO_EPOCHS"]
         self.train_dataloader = DataLoader(self.train_dataset,
-                                           batch_size=1,
+                                           batch_size=1, #cfg.TRAIN["BATCH_SIZE"],
                                            num_workers=cfg.TRAIN["NUMBER_WORKERS"],
                                            shuffle=True, pin_memory=True
                                            )
@@ -128,13 +128,14 @@ class Trainer(object):
             start = time.time()
             self.model.train()
 
-            mloss = torch.zeros(4)
+            mloss = torch.zeros(5)
             logger.info("===Epoch:[{}/{}]===".format(epoch, self.epochs))
             for i, (imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names)  in tqdm(enumerate(self.train_dataloader)):
-                imgs = imgs[0]
-                label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = \
-                    label_sbbox[0], label_mbbox[0], label_lbbox[0], sbboxes[0], mbboxes[0], lbboxes[0]
-                img_names = [_[0] for _ in img_names]
+                if (1):
+                    imgs = imgs[0]
+                    label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = \
+                        label_sbbox[0], label_mbbox[0], label_lbbox[0], sbboxes[0], mbboxes[0], lbboxes[0]
+                    img_names = [_[0] for _ in img_names]
                 self.scheduler.step(len(self.train_dataloader)*epoch + i)
                 imgs = imgs.to(self.device)
                 label_sbbox = label_sbbox.to(self.device)
@@ -159,14 +160,18 @@ class Trainer(object):
                     self.optimizer.zero_grad()
 
                 # Update running mean of tracked metrics
-                loss_items = torch.tensor([loss_ciou, loss_conf, loss_cls, loss])
+
+                conf_data = p_d[0][..., 6:7].detach().cpu().numpy().flatten()
+                pr999_p_conf = np.sort(conf_data)[-8]
+                loss_items = torch.tensor([loss_ciou, loss_conf, loss_cls, loss, pr999_p_conf])
                 mloss = (mloss * i + loss_items) / (i + 1)
                 # len(self.train_dataloader) / (cfg.TRAIN["BATCH_SIZE"]) * epoch + iter
                 # Print batch results
                 if i % 10 == 0:
 
-                    logger.info("  === Epoch:[{:3}/{}],step:[{:3}/{}],img_size:[{}],total_loss:{:.4f}|loss_ciou:{:.4f}|loss_conf:{:.4f}|loss_cls:{:.4f}|lr:{:.4f}".format(
-                        epoch, self.epochs, i, len(self.train_dataloader) - 1, self.train_dataset.img_size,mloss[3], mloss[0], mloss[1],mloss[2],self.optimizer.param_groups[0]['lr']
+                    logger.info("  === Epoch:[{:3}/{}],step:[{:3}/{}],img_size:[{}],total_loss:{:.4f}|loss_ciou:{:.4f}|loss_conf:{:.4f}|loss_cls:{:.4f}|lr:{:.4f}|train_pr99:{:.4f}".format(
+                        epoch, self.epochs, i, len(self.train_dataloader) - 1, self.train_dataset.img_size,mloss[3], mloss[0], mloss[1],mloss[2],self.optimizer.param_groups[0]['lr'],
+                        mloss[4]
                     ))
                     if writer:
                         writer.add_scalar('loss_ciou', mloss[0],
@@ -177,6 +182,8 @@ class Trainer(object):
                                         len(self.train_dataloader) * epoch + i)
                         writer.add_scalar('train_loss', mloss[3],
                                         len(self.train_dataloader) * epoch + i)
+                        writer.add_scalar('train_pr99.9_p_conf', mloss[4],
+                                        len(self.train_dataloader) * epoch + i)
                         writer.add_scalar('train_lr', self.optimizer.param_groups[0]["lr"],
                                         len(self.train_dataloader) * epoch + i)
                 # multi-sclae training (320-608 pixels) every 10 batches
@@ -185,12 +192,15 @@ class Trainer(object):
 
             if epoch % 1==0: #tag:Val #20
                 if cfg.TRAIN["DATA_TYPE"] == 'VOC' or cfg.TRAIN["DATA_TYPE"] == 'ABUS':
-                    area_small, area_big, plt = self.evaluate()
+                    area_small, area_big, plt, pr999_p_conf = self.evaluate()
                     logger.info("===== Validate =====".format(epoch, self.epochs))
                     if writer:
                         writer.add_scalar('AUC_10mm', area_small, epoch)
                         writer.add_scalar('AUC_15mm', area_big, epoch)
-                    self.__save_model_weights(epoch, area_big)
+                        writer.add_scalar('EVAL_pr99.9_p_conf', pr999_p_conf, epoch)
+                    save_per_epoch = 1
+                    if epoch % save_per_epoch==0:
+                        self.__save_model_weights(epoch, area_big)
                     logger.info('save weights done')
                     logger.info("  ===test AUC:{:.3f}".format(area_big))
 
@@ -207,7 +217,7 @@ class Trainer(object):
         logger.info("        =======  start  evaluate   ======     ")
         start = time.time()
         self.model.eval()
-        mloss = torch.zeros(4)
+        mloss = []
         pred_result_path=os.path.join(self.checkpoint_save_dir, 'evaluate')
         self.evaluator = Evaluator(self.model, showatt=False, pred_result_path=pred_result_path, box_top_k=256)
         self.evaluator.clear_predict_file()
@@ -238,10 +248,48 @@ class Trainer(object):
                     img = img_vol.unsqueeze(dim=0).cuda().float() / 255.0
                     img_name = line[0].replace('/home/lab402/User/eason_thesis/ABUS_data/', '').replace('/','_')
                     img = img.to(self.device)
-
-
                     #for img, img_name in zip(imgs, img_names):
-                    bboxes_prd = self.evaluator.get_bbox(img, multi_test=False, flip_test=False)
+                    bboxes_prd, box_raw_data = self.evaluator.get_bbox(img, multi_test=False, flip_test=False)
+                    pr999_p_conf = np.sort(box_raw_data[:, 6].detach().cpu().numpy().flatten())[-8]
+
+                    mloss.append(pr999_p_conf)
+                    if 0:
+                        true_boxes = line[-1].split(' ')
+                        true_boxes = list(map(lambda box: box.split(','), true_boxes))
+                        true_boxes = [list(map(int, box)) for box in true_boxes]
+                        box_data = [true_boxes]
+                        boxes = [[{
+                            'z_bot': box[0],
+                            'z_top': box[3],
+                            'z_range': box[3] - box[0] + 1,
+                            'z_center': (box[0] + box[3]) / 2,
+                            'y_bot': box[1],
+                            'y_top': box[4],
+                            'y_range': box[4] - box[1] + 1,
+                            'y_center': (box[1] + box[4]) / 2,
+                            'x_bot': box[2],
+                            'x_top': box[5],
+                            'x_range': box[5] - box[2] + 1,
+                            'x_center': (box[2] + box[5]) / 2,
+                        } for box in each_box_data if (box[3]*box[4]*box[5])>0] for each_box_data in box_data]
+                        scale = [1,1,1]
+                        ori_data = img
+                        for i in range(int(boxes[0][0]['x_bot']), int(boxes[0][0]['x_top']), 1):
+                            #TY Image
+                            img = Image.fromarray(((ori_data.detach().squeeze().cpu().numpy() * 255.0).astype('uint8'))[:,:,i], 'L')
+                            #img = Image.fromarray(TY_ori_data[i,:,:], 'L')
+                            img = img.convert(mode='RGB')
+                            draw = ImageDraw.Draw(img)
+                            for bx in boxes[0]:
+                                z_bot, z_top, y_bot, y_top, x_bot, x_top =bx['z_bot']*scale[0], bx['z_top']*scale[0], bx['y_bot']*scale[1], bx['y_top']*scale[1], bx['x_bot']*scale[2], bx['x_top']*scale[2]
+                                if int(x_bot) <= i <= int(x_top):
+                                    #z_bot,y_bot = int(z_bot), int(y_bot)
+                                    #z_top,y_top = int(z_top), int(y_top)
+
+                                    draw.rectangle(
+                                        [(y_bot, z_bot),(y_top, z_top)],
+                                        outline ="red", width=2)
+                            img.save('debug/infer_' + str(i)+'.png')
                     #if len(bboxes_prd) > 0:
                     #    bboxes_prd[:, :6] = (bboxes_prd[:, :6] / img.size(1)) * cfg.VAL['TEST_IMG_BBOX_ORIGINAL_SIZE'][0]
                     self.evaluator.store_bbox(img_name, bboxes_prd)
@@ -249,14 +297,16 @@ class Trainer(object):
             if 1: #for 640
                 npy_format = npy_dir + '/{}_0.npy'
                 for i, (imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names)  in tqdm(enumerate(self.test_dataloader)):
-                    if 0:
+                    if 1:
                         imgs = imgs[0]
                         label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = \
                             label_sbbox[0], label_mbbox[0], label_lbbox[0], sbboxes[0], mbboxes[0], lbboxes[0]
                         img_names = [_[0] for _ in img_names]
                     imgs = imgs.to(self.device)
                     for img, img_name in zip(imgs, img_names):
-                        bboxes_prd = self.evaluator.get_bbox(img, multi_test=False, flip_test=False)
+                        bboxes_prd, box_raw_data = self.evaluator.get_bbox(img, multi_test=False, flip_test=False)
+                        pr999_p_conf = np.sort(box_raw_data[:, 6].detach().cpu().numpy().flatten())[-8]
+                        mloss.append(pr999_p_conf)
                         if len(bboxes_prd) > 0:
                             bboxes_prd[:, :6] = (bboxes_prd[:, :6] / img.size(1)) * cfg.VAL['TEST_IMG_BBOX_ORIGINAL_SIZE'][0]
                         self.evaluator.store_bbox(img_name, bboxes_prd)
@@ -267,7 +317,7 @@ class Trainer(object):
 
         end = time.time()
         logger.info("  ===cost time:{:.4f}s".format(end - start))
-        return area_small, area_big, plt
+        return area_small, area_big, plt, np.percentile(mloss, 50)
 
     def evaluate_and_logTB(self):
         writer = self.writer

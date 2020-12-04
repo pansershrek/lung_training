@@ -104,12 +104,13 @@ class Evaluator(object):
                     bboxes_flip[:, [0, 2]] = img.shape[1] - bboxes_flip[:, [2, 0]]
                     bboxes_list.append(bboxes_flip)
             bboxes = np.row_stack(bboxes_list)
+            box_raw_data = []
         else:
-            bboxes = self.__predict(img, self.val_shape, (0, np.inf))
+            bboxes, box_raw_data = self.__predict(img, self.val_shape, (0, np.inf))
 
         bboxes = nms(bboxes, score_threshold=self.conf_thresh, iou_threshold=self.nms_thresh, box_top_k=self.box_top_k)
 
-        return bboxes
+        return bboxes, box_raw_data
 
     def __predict(self, img, test_shape, valid_scale):
         org_img = img
@@ -139,7 +140,7 @@ class Evaluator(object):
         bboxes = self.__convert_pred(pred_bbox, test_shape, org_shape, valid_scale)
         if self.showatt and len(img):
             self.__show_heatmap(beta[2], np.copy(org_img.cpu().numpy()))
-        return bboxes
+        return bboxes, p_d
 
     def __show_heatmap(self, beta, img):
         imshowAtt(beta, img)

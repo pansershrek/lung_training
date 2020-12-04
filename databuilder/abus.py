@@ -1,7 +1,5 @@
-
-
-#from .abus_data_eason import AbusNpyFormat
-from .abus_data import AbusNpyFormat
+from .abus_data_eason import AbusNpyFormat
+#from .abus_data import AbusNpyFormat
 from .image3d import ImageDetect3DDataset
 from .bounding_box import BoxList
 import torch
@@ -47,21 +45,6 @@ class ABUSDetectionDataset(Dataset):
 
     def __getitem__(self, index):
 
-        img, target = self.abusNpy[index]
-        anno = []
-        for item in target:
-            x1 = item['x_bot']
-            y1 = item['y_bot']
-            z1 = item['z_bot']
-            x2 = item['x_top']
-            y2 = item['y_top']
-            z2 = item['z_top']
-            category_id=1
-            bbox_mix = 1.
-            anno.append([z1, y1, x1, z2, y2, x2, category_id, bbox_mix])
-        #data and notation in ZYXC shape
-        return (img.permute(1,2,3,0).float() / 255.0).numpy(), np.array(anno, dtype=np.float32), self.abusNpy.getID(index)
-
         imgs, targets = self.abusNpy[index]
         #return_img = []
         return_anno = []
@@ -81,10 +64,14 @@ class ABUSDetectionDataset(Dataset):
             #data and notation in ZYXC shape
             #return_img.append((img.permute(1,2,3,0).float() / 255.0).numpy())
             #return_img.append(img.numpy())
+            if len(anno) < 10:
+                for i in range((10 - len(anno))):
+                    anno.append([0, 0, 0, 0, 0, 0, 0, 0])
             return_anno.append(np.array(anno, dtype=np.float32))
             return_id.append(self.abusNpy.getID(index))
         #np.array(return_img)
-        return imgs, np.array(return_anno), return_id
+
+        return imgs, np.stack(return_anno), return_id
 
     def get_img_info(self, index):
         return {'height':self.abusNpy.img_size[0], \

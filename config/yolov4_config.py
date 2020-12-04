@@ -13,25 +13,28 @@ ATTENTION = {"TYPE": 'NONE'}  #attention type:SEnet、CBAM or NONE
 # train
 TRAIN = {
          "DATA_TYPE": 'ABUS',  #DATA_TYPE: VOC ,COCO or Customer
-         "TRAIN_IMG_SIZE": (640, 160, 640), #(96, 96, 96), #(640, 160, 640),#(256, 64, 256),
+         "TRAIN_IMG_SIZE": (128, 128, 128), #(128, 128, 128), #(96, 96, 96), #(640, 160, 640),#(256, 64, 256),
          "AUGMENT": True,
          #for 640
-         "BATCH_SIZE": 2,
+         "BATCH_SIZE": 8,
          #for 96
-         #"BATCH_SIZE": 2,
+         #"BATCH_SIZE": 4,
          "MULTI_SCALE_TRAIN": False,
          "IOU_THRESHOLD_LOSS": 0.5,
          #for 640
          "YOLO_EPOCHS": 20,
          #for 96
-         #"YOLO_EPOCHS": 500,
+         #"YOLO_EPOCHS": 100,
          "Mobilenet_YOLO_EPOCHS": 120,
          "NUMBER_WORKERS": 0,
          "MOMENTUM": 0.9,
          "WEIGHT_DECAY": 0.0005,
          "LR_INIT": 5e-5, #1e-4,
          "LR_END": 1e-6,
+         #for 640
          "WARMUP_EPOCHS": 2 #40  # or None
+         #for 96
+         #"WARMUP_EPOCHS": 10 #40  # or None
          }
 
 
@@ -40,7 +43,7 @@ VAL = {
         #"TEST_IMG_SIZE": 416,
         "TEST_IMG_SIZE": (640, 160, 640), #(640, 160, 640),#(256, 64, 256), #
         "BATCH_SIZE": 1,
-        "NUMBER_WORKERS": 0,
+        "NUMBER_WORKERS": 4,
         "CONF_THRESH": 0.01, #0.005,
         "NMS_THRESH": 0.45,
         "MULTI_SCALE_VAL": True,

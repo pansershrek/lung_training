@@ -45,7 +45,7 @@ def preprocess_true_boxes(true_boxes, input_shape, anchors, num_classes):
         num_layers = 2
     else:
         num_layers = 3
-
+    #anchors = [[29., 19., 14.], [24., 30., 32.], [46., 28., 30.], [46., 31., 18.], [57., 43., 44.], [77., 62., 54.]]
     anchor_mask = [[5], [1, 2, 3, 4], [0]
                    ] if not use_two_scale else [[1, 2, 3, 4, 5], [0]]
 
@@ -154,15 +154,19 @@ def get_random_data(img_vol,annotation_line, input_shape, num_classes, random=Tr
     min_size_x = np.clip((tumor_size_x/rescale_ratio)//3,
                          min(15/rescale_ratio,tumor_size_x/rescale_ratio), (model_x-10)/rescale_ratio)
     x_low = int(max(0, x_1+(min_size_x/rescale_ratio)-(model_x/rescale_ratio)))
-    x_high = int(min(img_x-2, x_2-(min_size_x/rescale_ratio) + (model_x/rescale_ratio))-(model_x/rescale_ratio))
+    #x_high = int(min(img_x-2, x_2-(min_size_x/rescale_ratio) + (model_x/rescale_ratio))-(model_x/rescale_ratio))
+    x_high = int(x_2-(min_size_x/rescale_ratio))
+    x_high = min(x_high, img_x-2-(model_x/rescale_ratio))
+    x_high = max(x_high, x_low)
     new_x1 = int(np.random.randint(min(x_low,x_high), max(x_low,x_high)+1))
     new_x2 = new_x1+np.floor(model_x/rescale_ratio)
 
     min_size_y = np.clip((tumor_size_y/rescale_ratio)//3,
                          min(15/rescale_ratio,tumor_size_y/rescale_ratio), (model_y-10)/rescale_ratio)
     y_low = int(max(0, y_1+(min_size_y/rescale_ratio)-(model_y/rescale_ratio)))
-    y_high = int(min(img_y-2, y_2-(min_size_y/rescale_ratio) +
-                     (model_y/rescale_ratio))-(model_y/rescale_ratio))
+    y_high = int(y_2-(min_size_y/rescale_ratio))
+    y_high = min(y_high, img_y-2-(model_y/rescale_ratio))
+    y_high = max(y_high, y_low)
 
     new_y1 = int(np.random.randint(min(y_low,y_high), max(y_low,y_high)+1))
     new_y2 = new_y1+np.floor(model_y/rescale_ratio)
@@ -170,11 +174,15 @@ def get_random_data(img_vol,annotation_line, input_shape, num_classes, random=Tr
     min_size_z = np.clip((tumor_size_z/rescale_ratio)//3,
                          min(15/rescale_ratio,tumor_size_z/rescale_ratio), (model_z-10)/rescale_ratio)
     z_low = int(max(0, z_1+(min_size_z/rescale_ratio)-(model_z/rescale_ratio)))
-    z_high = int(min(img_z-2, z_2-(min_size_z/rescale_ratio) +
-                     (model_z/rescale_ratio))-(model_z/rescale_ratio))
+    #z_high = int(min(img_z-2, z_2-(min_size_z/rescale_ratio) +
+    #                 (model_z/rescale_ratio))-(model_z/rescale_ratio))
+    z_high = int(z_2-(min_size_z/rescale_ratio))
+    z_high = min(z_high, img_z-2-(model_z/rescale_ratio))
+    z_high = max(z_high, z_low)
     new_z1 = int(np.random.randint(min(z_low,z_high), max(z_low,z_high)+1))
     new_z2 = new_z1+np.floor(model_z/rescale_ratio)
-
+    assert new_x1>=0 and new_y1>=0 and new_z1>=0
+    assert new_x2<=img_x and new_y2<=img_y and new_z2<=img_z
     # if tumor_size_x<=model_x/rescale_ratio:
     #     # x_low = int(max(0, x_1+(tumor_size_x*(1-((1/2)*tumor_size_x *
     #     #                                          rescale_ratio/model_x)))-(model_x/rescale_ratio)))
@@ -267,15 +275,15 @@ def get_random_data(img_vol,annotation_line, input_shape, num_classes, random=Tr
     new_z1, new_z2, new_y1, new_y2, new_x1, new_x2 = int(new_z1), int(
         new_z2), int(new_y1), int(new_y2), int(new_x1), int(new_x2)
 
-    offset_x = int(np.floor(((model_x-int((new_x2-new_x1)*rescale_ratio))//2)))
-    offset_y = int(np.floor(((model_y-int((new_y2-new_y1)*rescale_ratio))//2)))
-    offset_z= int(np.floor(((model_z-int((new_z2-new_z1)*rescale_ratio))//2)))
+    #offset_x = int(np.floor(((model_x-int((new_x2-new_x1)*rescale_ratio))//2)))
+    #offset_y = int(np.floor(((model_y-int((new_y2-new_y1)*rescale_ratio))//2)))
+    #offset_z= int(np.floor(((model_z-int((new_z2-new_z1)*rescale_ratio))//2)))
 
     img_vol = img_vol[new_z1:new_z2, new_y1:new_y2, new_x1:new_x2].copy()
-
-    box[:, [0, 3]] = (box[:, [0, 3]]-new_x1)*rescale_ratio+offset_x
-    box[:, [1, 4]] = (box[:, [1, 4]]-new_y1)*rescale_ratio+offset_y
-    box[:, [2, 5]] = (box[:, [2, 5]]-new_z1)*rescale_ratio+offset_z
+    assert img_vol.shape == (model_z, model_y, model_x)
+    box[:, [0, 3]] = (box[:, [0, 3]]-new_x1)*rescale_ratio#+offset_x
+    box[:, [1, 4]] = (box[:, [1, 4]]-new_y1)*rescale_ratio#+offset_y
+    box[:, [2, 5]] = (box[:, [2, 5]]-new_z1)*rescale_ratio#+offset_z
     need_to_delete = []
     for i in range(len(box)):
         box[i, 0] = max(0, box[i, 0])
@@ -291,44 +299,42 @@ def get_random_data(img_vol,annotation_line, input_shape, num_classes, random=Tr
     box_data = np.zeros((max_boxes, 7))
 
     if not random:
-
-        # flip image or not#Eason add flip
-        flip = rand() < .5
-        if flip:
-            img_vol = img_vol[:, :, ::-1]
-            # FLIP_LEFT_RIGHT
-
-        reverse = rand() > .5
-        if reverse:
-            img_vol = img_vol[::-1, :, :]
-            # REVERSE_SLICE
-        # flip image or not#Eason add flip
-        rotate=rand() > .5
-        if rotate:
-            img_vol = img_vol[:, ::-1, :]
-
-        contrast=rand()>.5
-
         img_vol=img_vol.astype(float)
-        if contrast:
-            scale=rand(0.5,2.0)
-            img_vol=np.clip(img_vol*scale,0.0,255.0)
-
-
-        # correct boxes
-
-        if len(box) > 0:
-
+        if 0:
+            # flip image or not#Eason add flip
+            flip = rand() < .5
             if flip:
-                box[:, [0, 3]] = model_x - box[:, [3, 0]]  # Eason add flip
+                img_vol = img_vol[:, :, ::-1]
+                # FLIP_LEFT_RIGHT
 
+            reverse = rand() > .5
             if reverse:
-                box[:, [2, 5]] = model_z - \
-                    box[:, [5, 2]]  # Eason add reverse
-
+                img_vol = img_vol[::-1, :, :]
+                # REVERSE_SLICE
+            # flip image or not#Eason add flip
+            rotate=rand() > .5
             if rotate:
-                box[:, [1, 4]] = model_y - \
-                    box[:, [4, 1]]  # Eason add reverse
+                img_vol = img_vol[:, ::-1, :]
+
+            contrast=rand()>.5
+            if 0 and contrast:
+                scale=rand(0.5,2.0)
+                img_vol=np.clip(img_vol*scale,0.0,255.0)
+
+
+            # correct boxes
+            if len(box) > 0:
+
+                if flip:
+                    box[:, [0, 3]] = model_x - box[:, [3, 0]]  # Eason add flip
+
+                if reverse:
+                    box[:, [2, 5]] = model_z - \
+                        box[:, [5, 2]]  # Eason add reverse
+
+                if rotate:
+                    box[:, [1, 4]] = model_y - \
+                        box[:, [4, 1]]  # Eason add reverse
 
         # with open('0610_anchors.txt','a+') as f:
         #     for sub_box in box:
@@ -414,11 +420,10 @@ def data_generator(annotation_lines, batch_size, sub_batch_size, input_shape, an
         for b in range(int(batch_size/sub_batch_size)):
             if i == 0:
                 np.random.shuffle(annotation_lines)
-            line = annotation_lines[i].split(',', 4)
-            img_vol = np.load(line[0])
 
-            fail_file = annotation_lines[i].split(
-                ',', 4)[0].rsplit('.', 1)[0]+'_fail_list\\'+model_path+'\\fail.txt'
+            line = annotation_lines[i]
+            img_vol = np.load(line.split(',', 4)[0])
+            fail_file = line.split(',', 4)[0].rsplit('.', 1)[0]+'_fail_list\\'+model_path+'\\fail.txt'
 
             if not os.path.exists(fail_file) or len(open(fail_file).readlines()) == 0:
                 target_BG_num = 0
@@ -429,13 +434,13 @@ def data_generator(annotation_lines, batch_size, sub_batch_size, input_shape, an
 
             for _ in range(target_GT_num):
                 image, box = get_random_data(
-                    img_vol, annotation_lines[i], input_shape, num_classes, random=False)
+                    img_vol, line, input_shape, num_classes, random=False)
                 image_data.append(image)
                 box_data.append(box)
 
             for _ in range(target_BG_num):
                 image, box = get_fail_background(
-                    img_vol, annotation_lines[i], input_shape, num_classes, fail_file, random=False)
+                    img_vol, line, input_shape, num_classes, fail_file, random=False)
                 image_data.append(image)
                 box_data.append(box)
 
@@ -462,7 +467,7 @@ def data_generator_wrapper(annotation_lines, batch_size, sub_batch_size, input_s
 class AbusNpyFormat(data.Dataset):
     def __init__(self, testing_mode, root, enable_CV=False, crx_fold_num=0, crx_partition='train', augmentation=False, include_fp=False, batch_size=0):
         fold_list_root = '/home/lab402/User/eason_thesis/program_update_v1/5_fold_list/'
-
+        self.crx_partition = crx_partition
         # EASON code
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         fold_num = crx_fold_num
@@ -471,7 +476,7 @@ class AbusNpyFormat(data.Dataset):
         val_path = fold_list_root + 'five_fold_val_'+str(fold_num)+'_separate.txt'
         test_path = fold_list_root + 'five_fold_test_'+str(fold_num)+'.txt'
 
-        input_shape = (96, 96, 96)
+        input_shape = (128, 128, 128) #(160,160,160)#(96, 96, 96)
         train_set = open(train_path).readlines()
         #train_set = [_.replace('/home/lab402/User/eason_thesis/ABUS_data/', '') for _ in train_set]
         #train_set = [root + '/converted_640_160_640/' + _.replace('/', '_') for _ in train_set]
@@ -497,12 +502,14 @@ class AbusNpyFormat(data.Dataset):
         # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
         #d = next(self.eason_training_data)
-        self.set_size = len(train_set)//batch_size
+        self.set_size = 250 #len(train_set)//batch_size
         self.gt = []
         self.root = root.rstrip('/') + '/'
+        self.aug = augmentation
 
-        EASON = 1
-        if 1 and EASON:#for 640
+        TY = 0
+        if TY or (crx_partition!='train') :#for 640
+            input_shape = (640, 160, 640)
             file_part = 'val' if crx_partition=='valid' else crx_partition
             if testing_mode==1 and file_part=='val':
                 file_part = 'test'
@@ -512,6 +519,7 @@ class AbusNpyFormat(data.Dataset):
                 self.gt = f.read().splitlines()
             self.gt = [_.replace('/home/lab402/User/eason_thesis/ABUS_data/', '') for _ in self.gt]
             self.set_size = len(self.gt)
+            self.aug = augmentation
         if 0:
             if include_fp:
                 print('FP training mode...')
@@ -542,15 +550,19 @@ class AbusNpyFormat(data.Dataset):
                 self.gt = lines
 
             self.set_size = len(self.gt)
-        self.aug = False #augmentation
+            self.aug = augmentation
         self.img_size = (640,160,640) #(640,160,640)
         print('Dataset info: Cross-validation {}, partition: {}, fold number {}, data augmentation {}'\
             .format(enable_CV, crx_partition, crx_fold_num, self.aug))
 
     def get_data_lines(self):
         return self.val_set
+
     def __getitem__(self, index):
-        Load_TY = 1 #for 640
+        aug_mode, index = self._get_aug_index(index)
+        Load_TY = 0 #for 640
+        if (self.crx_partition!='train'):
+            Load_TY=1
         if Load_TY:
             # 0: original, 1: flip Z, 2: flip X, 3: flip ZX
             aug_mode, index = self._get_aug_index(index)
@@ -565,8 +577,8 @@ class AbusNpyFormat(data.Dataset):
             # numpy array data (x,y,z) is not in the same order as gt label, which is (z,y,x)
             # line[0] = 'JuaShenData/JuaShenData/Converted/2-020/02287/LAP/1.3.6.1.4.1.47779.1.004.npy'
             # line[0] = 'JuaShenData/JuaShenData/Converted/2-020/02287/LAP/1.3.6.1.4.1.47779.1.004.npy'
-
-            ori_data = np.load(self.root + 'converted_{}_{}_{}/'.format(self.img_size[0], self.img_size[1], self.img_size[2]) + line[0].replace('/', '_'))
+            npy_name = self.root + 'converted_{}_{}_{}/'.format(self.img_size[0], self.img_size[1], self.img_size[2]) + line[0].replace('/', '_')
+            ori_data = np.load(npy_name)
             TY_ori_data = ori_data
             ori_data = torch.from_numpy(ori_data)
             ori_data = torch.transpose(ori_data, 0, 2).contiguous()
@@ -579,20 +591,22 @@ class AbusNpyFormat(data.Dataset):
 
             TY_Image = ori_data# claim transposed to zyx
             TY_Box = true_boxes# claim zyx
-            data, boxes = self._flipTensor(ori_data, true_boxes, gt_scale, aug_mode = aug_mode)
+            true_boxes = [[box[0] * gt_scale[0], box[1] * gt_scale[1], box[2] * gt_scale[2],
+                           box[3] * gt_scale[0], box[4] * gt_scale[1], box[5] * gt_scale[2], ] for box in true_boxes]
+            data, boxes = self._flipTensor(ori_data, true_boxes, aug_mode = aug_mode)
             scale = gt_scale
-            scale = [1, 1, 1]
             ori_data = ori_data.unsqueeze(0).permute((0, 2, 3, 4, 1))
+            ori_data = ori_data/255.0
             boxes = [boxes]
             if 0:
-                for i in range(int(boxes[0][0]['x_bot']*scale[2]), int(boxes[0][0]['x_top']*scale[2]), 1):
+                for i in range(int(boxes[0][0]['x_bot']), int(boxes[0][0]['x_top']), 1):
                     #TY Image
-                    img = Image.fromarray(((ori_data[0].squeeze().numpy()).astype('uint8'))[:,:,i], 'L')
+                    img = Image.fromarray(((ori_data[0].squeeze().numpy() * 255.0).astype('uint8'))[:,:,i], 'L')
                     #img = Image.fromarray(TY_ori_data[i,:,:], 'L')
                     img = img.convert(mode='RGB')
                     draw = ImageDraw.Draw(img)
                     for bx in boxes[0]:
-                        z_bot, z_top, y_bot, y_top, x_bot, x_top =bx['z_bot']*scale[0], bx['z_top']*scale[0], bx['y_bot']*scale[1], bx['y_top']*scale[1], bx['x_bot']*scale[2], bx['x_top']*scale[2]
+                        z_bot, z_top, y_bot, y_top, x_bot, x_top =bx['z_bot'], bx['z_top'], bx['y_bot'], bx['y_top'], bx['x_bot'], bx['x_top']
                         if int(x_bot) <= i <= int(x_top):
                             #z_bot,y_bot = int(z_bot), int(y_bot)
                             #z_top,y_top = int(z_top), int(y_top)
@@ -609,28 +623,50 @@ class AbusNpyFormat(data.Dataset):
         # for box in boxes:
         #     if box['z_bot'] <= 0 or box['x_bot'] <= 0:
         #         print("A box is out of bound...")
-        Load_EASON = 0 #for 96
+        Load_EASON = 1 #for 96
+        if (self.crx_partition!='train'):
+            Load_EASON=0
         if Load_EASON:
             d = next(self.eason_training_data)
-            image_data, box_data = d[0]
-            boxes = [[{
-                'z_bot': box[0],
-                'z_top': box[3],
-                'z_range': box[3] - box[0] + 1,
-                'z_center': (box[0] + box[3]) / 2,
-                'y_bot': box[1],
-                'y_top': box[4],
-                'y_range': box[4] - box[1] + 1,
-                'y_center': (box[1] + box[4]) / 2,
-                'x_bot': box[2],
-                'x_top': box[5],
-                'x_range': box[5] - box[2] + 1,
-                'x_center': (box[2] + box[5]) / 2,
-            } for box in each_box_data if (box[3]*box[4]*box[5])>0] for each_box_data in box_data]
-            ori_data = torch.from_numpy(image_data)
-            ori_data = torch.transpose(ori_data, 1, 3).contiguous()
-            ori_data = ori_data.to(torch.float32)
+            image_data_pack, box_data_pack = d[0]
+            box_data_pack = [[box for box in each_box_data if (box[3]*box[4]*box[5])>0] for each_box_data in box_data_pack]
+            gt_scale = [1., 1., 1.]
+            new_data = []
+            new_boxes = []
+            for ori_data, true_boxes in zip(image_data_pack, box_data_pack):
+                ori_data = torch.from_numpy(ori_data).squeeze()
+                ori_data = torch.transpose(ori_data, 0, 2).contiguous()
+                ori_data = ori_data.unsqueeze(dim=0).to(torch.float32)
+                data, boxes = self._flipTensor(ori_data, true_boxes, aug_mode=aug_mode)
+                new_data.append(data)
+                new_boxes.append(boxes)
+            scale = gt_scale
+            ori_data = torch.stack(new_data).permute((0, 2, 3, 4, 1))
+            #ori_data = ori_data/255.0
+            boxes = new_boxes
+
+            #ori_data = torch.from_numpy(image_data)
+            #ori_data = torch.transpose(ori_data, 1, 3).contiguous()
+            #ori_data = ori_data.to(torch.float32)
             #.view(-1,96,96,96,1)
+            if 0:
+                for i in range(int(boxes[0][0]['x_bot']), int(boxes[0][0]['x_top']), 1):
+                    #TY Image
+                    img = Image.fromarray(((ori_data[0].squeeze().numpy() * 255.0).astype('uint8'))[:,:,i], 'L')
+                    #img = Image.fromarray(TY_ori_data[i,:,:], 'L')
+                    img = img.convert(mode='RGB')
+                    draw = ImageDraw.Draw(img)
+                    for bx in boxes[0]:
+                        z_bot, z_top, y_bot, y_top, x_bot, x_top =bx['z_bot'], bx['z_top'], bx['y_bot'], bx['y_top'], bx['x_bot'], bx['x_top']
+                        if int(x_bot) <= i <= int(x_top):
+                            #z_bot,y_bot = int(z_bot), int(y_bot)
+                            #z_top,y_top = int(z_top), int(y_top)
+
+                            draw.rectangle(
+                                [(y_bot, z_bot),(y_top, z_top)],
+                                outline ="red", width=2)
+                    img.save('debug/ES_' + str(i)+'.png')
+
             if 0:
                 for i in range(int(boxes[0][0]['x_bot']), int(boxes[0][0]['x_top']), 3):
                     #TY Image
@@ -645,46 +681,8 @@ class AbusNpyFormat(data.Dataset):
                             draw.rectangle(
                                 [(y_bot, z_bot),(y_top, z_top)],
                                 outline ="red", width=2)
-                    img.save('debug/TY_' + str(i)+'.png')
+                    img.save('debug/EASON_' + str(i)+'.png')
                 print("print visualize done ", boxes[0][0]['x_bot'], " ~ ", boxes[0][0]['x_top'])
-
-
-        #image_data = image_data[0]
-        #box_data = box_data[0]
-
-        if 0:
-            overwrite_line = '/home/lab402/User/eason_thesis/ABUS_data/JuaShenData/JuaShenData/Converted/2-020/02287/LAP/1.3.6.1.4.1.47779.1.004.npy,668,160,665,218,7,260,336,73,321,0'
-            line = overwrite_line.split(',', 4)
-            img_vol = np.load(line[0]) # claim zyx
-            line = overwrite_line.split(',', 4)
-            boxes = line[-1].split(' ')
-            box = np.array([np.array(list(map(int, box.split(','))))
-                            for box in boxes]) # claim xyz
-
-            for i in [260,270,280,290,300,310,320]:
-                #TY Image
-                img = Image.fromarray((ori_data[0].numpy().astype('uint8'))[:,:,i], 'L')
-                #img = Image.fromarray(TY_ori_data[i,:,:], 'L')
-                img = img.convert(mode='RGB')
-                draw = ImageDraw.Draw(img)
-                img.save('debug/TY_' + str(i)+'.png')
-
-                #EASON Image
-                img = Image.fromarray(img_vol[i,:,:], 'L')
-                img = img.convert(mode='RGB')
-                draw = ImageDraw.Draw(img)
-                img.save('debug/EASON_' + str(i)+'.png')
-
-            EASON_Image = image_data # claim zyx
-            EASON_Box = box_data # claim xyz
-
-        # DEBUG draw image  DEBUG draw image  DEBUG draw image  DEBUG draw image  DEBUG draw image  DEBUG draw image  DEBUG draw image
-        # self.draw_img(image_data, overwrite_line)
-
-        #ori_data = torch.from_numpy(image_data)
-        #ori_data = torch.transpose(ori_data, 0, 2).contiguous()
-        #ori_data = ori_data.view(1,96,96,96).to(torch.float32)
-        #boxes = [{'x_bot': 250.22556390977442, 'x_center': 279.57894736842104, 'x_range': 59.70676691729321, 'x_top': 308.93233082706763, 'y_bot': 7.0, 'y_center': 40.0, 'y_range': 67.0, 'y_top': 73.0, 'z_bot': 318.08383233532936, 'z_center': 374.61077844311376, 'z_range': 114.05389221556885, 'z_top': 431.1377245508982}]
 
         return ori_data, boxes
 
@@ -795,70 +793,72 @@ class AbusNpyFormat(data.Dataset):
             return self.set_size
 
 
-    def _flipTensor(self, data, true_boxes, gt_scale, aug_mode=0):
+    def _flipTensor(self, data, true_boxes, aug_mode=0):
+        img_size_z, img_size_y, img_size_x = data[0].shape
+        boxes = [{
+            'z_bot': box[0],
+            'z_top': box[3],
+            'z_range': box[3] - box[0] + 1,
+            'z_center': (box[0] + box[3]) / 2,
+            'y_bot': box[1],
+            'y_top': box[4],
+            'y_range': box[4] - box[1] + 1,
+            'y_center': (box[1] + box[4]) / 2,
+            'x_bot': box[2],
+            'x_top': box[5],
+            'x_range': box[5] - box[2] + 1,
+            'x_center': (box[2] + box[5]) / 2,
+        } for box in true_boxes]
+
         if aug_mode == 1:
             data = torch.flip(data, [1])
             boxes = [{
-                'z_bot': max(0, 640 - (box[3]*gt_scale[0])),
-                'z_top': 640 - (box[0]*gt_scale[0]),
-                'z_range': box[3]*gt_scale[0] - box[0]*gt_scale[0] + 1,
-                'z_center': 640 - ((box[0] + box[3])*gt_scale[0] / 2),
-                'y_bot': box[1]*gt_scale[1],
-                'y_top': box[4]*gt_scale[1],
-                'y_range': box[4]*gt_scale[1] - box[1]*gt_scale[1] + 1,
-                'y_center': (box[1] + box[4])*gt_scale[1] / 2,
-                'x_bot': box[2]*gt_scale[2],
-                'x_top': box[5]*gt_scale[2],
-                'x_range': box[5]*gt_scale[2] - box[2]*gt_scale[2] + 1,
-                'x_center': (box[2] + box[5])*gt_scale[2] / 2,
-            } for box in true_boxes]
+                'z_bot': max(0, img_size_z - box['z_top']),
+                'z_top': img_size_z - box['z_bot'],
+                'z_range': box['z_range'],
+                'z_center': img_size_z - box['z_center'],
+                'y_bot': box['y_bot'],
+                'y_top': box['y_top'],
+                'y_range': box['y_range'],
+                'y_center': box['y_center'],
+                'x_bot': box['x_bot'],
+                'x_top': box['x_top'],
+                'x_range': box['x_range'],
+                'x_center': box['x_center'],
+            } for box in boxes]
         elif aug_mode == 2:
             data = torch.flip(data, [3])
             boxes = [{
-                'z_bot': box[0]*gt_scale[0],
-                'z_top': box[3]*gt_scale[0],
-                'z_range': box[3]*gt_scale[0] - box[0]*gt_scale[0] + 1,
-                'z_center': (box[0] + box[3])*gt_scale[0] / 2,
-                'y_bot': box[1]*gt_scale[1],
-                'y_top': box[4]*gt_scale[1],
-                'y_range': box[4]*gt_scale[1] - box[1]*gt_scale[1] + 1,
-                'y_center': (box[1] + box[4])*gt_scale[1] / 2,
-                'x_bot': max(0, 640 - (box[5]*gt_scale[2])),
-                'x_top': 640 - (box[2]*gt_scale[2]),
-                'x_range': box[5]*gt_scale[2] - box[2]*gt_scale[2] + 1,
-                'x_center': 640 - ((box[2] + box[5])*gt_scale[2] / 2),
-            } for box in true_boxes]
+                'z_bot': box['z_bot'],
+                'z_top': box['z_top'],
+                'z_range': box['z_range'],
+                'z_center': box['z_center'],
+                'y_bot': box['y_bot'],
+                'y_top': box['y_top'],
+                'y_range': box['y_range'],
+                'y_center': box['y_center'],
+                'x_bot': max(0, img_size_x - box['x_top']),
+                'x_top': img_size_x - box['x_bot'],
+                'x_range': box['x_range'],
+                'x_center': img_size_x - box['x_center'],
+            } for box in boxes]
+
         elif aug_mode == 3:
             data = torch.flip(data, [1,3])
             boxes = [{
-                'z_bot': max(0, 640 - (box[3]*gt_scale[0])),
-                'z_top': 640 - (box[0]*gt_scale[0]),
-                'z_range': box[3]*gt_scale[0] - box[0]*gt_scale[0] + 1,
-                'z_center': 640 - ((box[0] + box[3])*gt_scale[0] / 2),
-                'y_bot': box[1]*gt_scale[1],
-                'y_top': box[4]*gt_scale[1],
-                'y_range': box[4]*gt_scale[1] - box[1]*gt_scale[1] + 1,
-                'y_center': (box[1] + box[4])*gt_scale[1] / 2,
-                'x_bot': max(0, 640 - (box[5]*gt_scale[2])),
-                'x_top': 640 - (box[2]*gt_scale[2]),
-                'x_range': box[5]*gt_scale[2] - box[2]*gt_scale[2] + 1,
-                'x_center': 640 - ((box[2] + box[5])*gt_scale[2] / 2),
-            } for box in true_boxes]
-        else:
-            boxes = [{
-                'z_bot': box[0]*gt_scale[0],
-                'z_top': box[3]*gt_scale[0],
-                'z_range': box[3]*gt_scale[0] - box[0]*gt_scale[0] + 1,
-                'z_center': (box[0] + box[3])*gt_scale[0] / 2,
-                'y_bot': box[1]*gt_scale[1],
-                'y_top': box[4]*gt_scale[1],
-                'y_range': box[4]*gt_scale[1] - box[1]*gt_scale[1] + 1,
-                'y_center': (box[1] + box[4])*gt_scale[1] / 2,
-                'x_bot': box[2]*gt_scale[2],
-                'x_top': box[5]*gt_scale[2],
-                'x_range': box[5]*gt_scale[2] - box[2]*gt_scale[2] + 1,
-                'x_center': (box[2] + box[5])*gt_scale[2] / 2,
-            } for box in true_boxes]
+                'z_bot': max(0, img_size_z - box['z_top']),
+                'z_top': img_size_z - box['z_bot'],
+                'z_range': box['z_range'],
+                'z_center': img_size_z - box['z_center'],
+                'y_bot': box['y_bot'],
+                'y_top': box['y_top'],
+                'y_range': box['y_range'],
+                'y_center': box['y_center'],
+                'x_bot': max(0, img_size_x - box['x_top']),
+                'x_top': img_size_x - box['x_bot'],
+                'x_range': box['x_range'],
+                'x_center': img_size_x - box['x_center'],
+            } for box in boxes]
 
         return data, boxes
     def getID(self, index):

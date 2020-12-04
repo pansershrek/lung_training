@@ -6,7 +6,7 @@ import torch
 from model.head.yolo_head import Yolo_head
 from model.YOLOv4 import YOLOv4
 import config.yolov4_config as cfg
-
+import numpy as np
 
 class Build_Model(nn.Module):
     """
@@ -14,8 +14,21 @@ class Build_Model(nn.Module):
     """
     def __init__(self, weight_path=None, resume=False, dims=2):
         super(Build_Model, self).__init__()
+        anchors = cfg.MODEL["ANCHORS3D"]
+        if (0):
+            anchors = [
+                [[77., 62., 54.], [62., 77., 54.], [62., 54., 77.]],
+                [[77., 62., 54.], [62., 77., 54.], [62., 54., 77.]],
+                [[77., 62., 54.], [62., 77., 54.], [62., 54., 77.]],
+                #[[24., 30., 32.], [46., 28., 30.], [46., 31., 18.]],
+                #[[29., 19., 14.], [19., 29., 14.], [14., 19., 29.]],
+                ]
+            anchors = np.array(anchors)
+            anchors[0] = anchors[0] / 8.
+            anchors[1] = anchors[1] / 16.
+            anchors[2] = anchors[2] / 32.
 
-        self.__anchors = torch.FloatTensor(cfg.MODEL["ANCHORS3D"])
+        self.__anchors = torch.FloatTensor(anchors)
         self.__strides = torch.FloatTensor(cfg.MODEL["STRIDES"])
         if cfg.TRAIN["DATA_TYPE"] == 'VOC':
             self.__nC = cfg.VOC_DATA["NUM"]
