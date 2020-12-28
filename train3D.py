@@ -18,13 +18,14 @@ import config.yolov4_config as cfg
 from utils import cosine_lr_scheduler
 from utils.log import Logger
 
-from eval_coco import *
-from eval.cocoapi_evaluator import COCOAPIEvaluator
+#from eval_coco import *
+#from eval.cocoapi_evaluator import COCOAPIEvaluator
 
 from databuilder.abus import ABUSDetectionDataset
 from databuilder.yolo4dataset import YOLO4_3DDataset
 from tqdm import tqdm
 from trainer import Trainer
+from dataset import Tumor, LungDataset
 
 
 if __name__ == "__main__":
@@ -32,12 +33,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--weight_path', type=str, default=None, help='weight file path')#weight/darknet53_448.weights
     parser.add_argument('--resume', action='store_true',default=False,  help='resume training flag')
-    parser.add_argument('--gpu_id', type=int, default=-1, help='whither use GPU(eg:0,1,2,3,4,5,6,7,8) or CPU(-1)')
+    parser.add_argument('--gpu_id', type=int, default=0, help='whither use GPU(eg:0,1,2,3,4,5,6,7,8) or CPU(-1)')
     parser.add_argument('--log_path', type=str, default='log/', help='log path')
     parser.add_argument('--accumulate', type=int, default=1, help='batches to accumulate before optimizing')
     parser.add_argument('--fp_16', type=bool, default=False, help='whither to use fp16 precision')
     parser.add_argument('--exp_name', type=str, default='debug', help='log experiment name')
     parser.add_argument('--crx_valid', type=int, default=0)
+    parser.add_argument('--dataset_name', type=str, default="lung_dataset_20201215.pkl")
+    parser.add_argument('--eval_interval', type=int, default=-1)
+    parser.add_argument('--npy_name', type=str, default="hu+norm_128x128x128.npy")
     opt = parser.parse_args()
     writer = SummaryWriter(log_dir=opt.log_path + '/' + opt.exp_name)
     logger = Logger(log_file_name=opt.log_path + '/' + opt.exp_name + '/log.txt', log_level=logging.DEBUG, logger_name='YOLOv4').get_log()
@@ -50,7 +54,7 @@ if __name__ == "__main__":
 
     #resume = True
     #weight_path = 'checkpoint/YOLO_ABUS_d30_Stem16_lr25/backup_epoch140.pt'
-    trainer = Trainer(testing_mode=0,
+    trainer = Trainer(testing_mode=0, # 0-> validation, 1-> testing
             weight_path=weight_path,
             checkpoint_save_dir=checkpoint_save_dir,
             resume=resume,
@@ -59,7 +63,10 @@ if __name__ == "__main__":
             fp_16=opt.fp_16,
             writer=writer,
             logger=logger,
-            crx_fold_num=opt.crx_valid
+            crx_fold_num=opt.crx_valid,
+            dataset_name=opt.dataset_name,
+            eval_interval=opt.eval_interval,
+            npy_name=opt.npy_name
             )
 
     trainer.train()

@@ -17,18 +17,20 @@ import config.yolov4_config as cfg
 from utils import cosine_lr_scheduler
 from utils.log import Logger
 
-from eval_coco import *
-from eval.cocoapi_evaluator import COCOAPIEvaluator
+#from eval_coco import *
+#from eval.cocoapi_evaluator import COCOAPIEvaluator
 
-from databuilder.abus import ABUSDetectionDataset
+#from databuilder.abus import ABUSDetectionDataset
+from dataset import Tumor, LungDataset
 from databuilder.yolo4dataset import YOLO4_3DDataset
 from tqdm import tqdm
 from apex import amp
 
 class Trainer(object):
-    def __init__(self, testing_mode, weight_path, checkpoint_save_dir, resume, gpu_id, accumulate, fp_16, writer, logger, crx_fold_num):
-        self.data_root = 'datasets/abus'
-        init_seeds(0)
+    def __init__(self, testing_mode, weight_path, checkpoint_save_dir, resume, gpu_id, accumulate, fp_16, writer, logger, crx_fold_num, dataset_name, eval_interval, npy_name):
+        #self.data_root = 'datasets/abus'
+        #init_seeds(0)
+        self.lung_dataset_name = dataset_name
         self.device = gpu.select_device(gpu_id)
         self.start_epoch = 0
         self.best_mAP = 0.
@@ -41,28 +43,61 @@ class Trainer(object):
         self.multi_scale_train = cfg.TRAIN["MULTI_SCALE_TRAIN"]
         if self.multi_scale_train:print('Using multi scales training')
         else:print('train img size is {}'.format(cfg.TRAIN["TRAIN_IMG_SIZE"]))
-        self.logger.info('augmentation=True, crx_fold_num= {}'.format(crx_fold_num))
+        self.logger.info('augmentation=False, crx_fold_num= {}'.format(crx_fold_num))
         self.testing_mode = testing_mode
         self.crx_fold_num = crx_fold_num
-        train_dataset = ABUSDetectionDataset(testing_mode, augmentation=True, crx_fold_num= crx_fold_num, crx_partition= 'train', crx_valid=True, include_fp=False, root=self.data_root,
-            batch_size=cfg.TRAIN["BATCH_SIZE"])
-        self.train_dataset = YOLO4_3DDataset(train_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"])
+        
+        #train_dataset = ABUSDetectionDataset(testing_mode, augmentation=True, crx_fold_num= crx_fold_num, crx_partition= 'train', crx_valid=True, include_fp=False, root=self.data_root,
+        #    batch_size=cfg.TRAIN["BATCH_SIZE"])
+        dataset = LungDataset.load(dataset_name)
+        dataset.get_data(dataset.pids, name=npy_name)
+        train_data, validation_data, test_data = dataset.make_kfolds_using_pids(num_k_folds=5, k_folds_seed=123, current_fold=self.crx_fold_num, valid_test_split=True, portion_list=[3,1,1])
+        train_dataset = LungDataset.load(dataset_name)
+        train_dataset.data = train_data
+        
+        #validation_dataset =  LungDataset.load(dataset_name)
+        #validation_dataset.data = validation_data
+        test_dataset =  LungDataset.load(dataset_name)
+        if self.testing_mode==0:
+            test_dataset.data = validation_data
+        elif self.testing_mode==1:
+            test_dataset.data = test_data
+        elif self.testing_mode == -1:
+            test_dataset.data = train_data[:100]
+        else:
+            raise TypeError(f"Invalid testing mode: {self.testing_mode}. {{1: 'test', 0: 'val', -1: 'train'}}")
+
+        #useless, cache should implement on yolo dataset
+        train_dataset.cacher.cache_size = 0
+        test_dataset.cacher.cache_size = 0
+
+        if (0): #debug
+            train_dataset.data = train_data[:40]
+            test_dataset.data = train_data[:40]
+
+        self.train_dataset = YOLO4_3DDataset(train_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0)
         #self.train_dataset = data.Build_Dataset(anno_file_type="train", img_size=cfg.TRAIN["TRAIN_IMG_SIZE"])
 
         self.epochs = cfg.TRAIN["YOLO_EPOCHS"] if cfg.MODEL_TYPE["TYPE"] == 'YOLOv4' else cfg.TRAIN["Mobilenet_YOLO_EPOCHS"]
         self.train_dataloader = DataLoader(self.train_dataset,
-                                           batch_size=1, #cfg.TRAIN["BATCH_SIZE"],
+                                           batch_size=cfg.TRAIN["BATCH_SIZE"],
                                            num_workers=cfg.TRAIN["NUMBER_WORKERS"],
                                            shuffle=True, pin_memory=True
                                            )
 
+        if eval_interval==-1:
+            step_per_epoch = int( len(self.train_dataset)/cfg.TRAIN["BATCH_SIZE"] )
+            eval_per_steps = 1000
+            self.eval_interval = int( eval_per_steps/step_per_epoch )
+        else:
+            self.eval_interval = eval_interval
+        self.logger.info('eval_interval = {}'.format(self.eval_interval))
+        #test_dataset = ABUSDetectionDataset(testing_mode, augmentation=False, crx_fold_num= crx_fold_num, crx_partition= 'valid', crx_valid=True, include_fp=False, root=self.data_root,
+        #    batch_size=cfg.VAL["BATCH_SIZE"])
 
-        test_dataset = ABUSDetectionDataset(testing_mode, augmentation=False, crx_fold_num= crx_fold_num, crx_partition= 'valid', crx_valid=True, include_fp=False, root=self.data_root,
-            batch_size=cfg.VAL["BATCH_SIZE"])
-
-        self.test_dataset = YOLO4_3DDataset(test_dataset, classes=[0, 1], img_size=cfg.VAL["TEST_IMG_SIZE"])
+        self.test_dataset = YOLO4_3DDataset(test_dataset, classes=[0, 1], img_size=cfg.VAL["TEST_IMG_SIZE"], cache_size=0)
         self.test_dataloader = DataLoader(self.test_dataset,
-                                            batch_size=1,
+                                            batch_size=cfg.VAL["BATCH_SIZE"],
                                             num_workers=cfg.VAL["NUMBER_WORKERS"],
                                             shuffle=False, pin_memory=True
                                             )
@@ -124,14 +159,16 @@ class Trainer(object):
         if self.fp_16: self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level='O1', verbosity=0)
         logger.info("        =======  start  training   ======     ")
         #area_small, area_big, plt = self.evaluate()
-        for epoch in range(self.start_epoch, self.epochs):
+        for epoch in range(self.start_epoch, self.epochs+1):
             start = time.time()
             self.model.train()
+            self.current_epoch = epoch
 
             mloss = torch.zeros(5)
             logger.info("===Epoch:[{}/{}]===".format(epoch, self.epochs))
-            for i, (imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names)  in tqdm(enumerate(self.train_dataloader)):
-                if (1):
+            n_batch = len(self.train_dataloader)
+            for i, (imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names)  in tqdm(enumerate(self.train_dataloader), total=n_batch):
+                if (0): # if you had processed batch without dataloader, and use dataloader with B=1
                     imgs = imgs[0]
                     label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = \
                         label_sbbox[0], label_mbbox[0], label_lbbox[0], sbboxes[0], mbboxes[0], lbboxes[0]
@@ -190,13 +227,14 @@ class Trainer(object):
                 if self.multi_scale_train and (i+1) % 10 == 0:
                     self.train_dataset.img_size = random.choice(range(10, 20)) * 32
 
-            if epoch % 1==0: #tag:Val #20
+            if epoch % self.eval_interval==0: #tag:Val #20
                 if cfg.TRAIN["DATA_TYPE"] == 'VOC' or cfg.TRAIN["DATA_TYPE"] == 'ABUS':
                     area_small, area_big, plt, pr999_p_conf = self.evaluate()
                     logger.info("===== Validate =====".format(epoch, self.epochs))
                     if writer:
-                        writer.add_scalar('AUC_10mm', area_small, epoch)
-                        writer.add_scalar('AUC_15mm', area_big, epoch)
+                        #writer.add_scalar('AUC_10mm', area_small, epoch)
+                        #writer.add_scalar('AUC_15mm', area_big, epoch)
+                        writer.add_scalar('AUC', area_big, epoch)
                         writer.add_scalar('EVAL_pr99.9_p_conf', pr999_p_conf, epoch)
                     save_per_epoch = 1
                     if epoch % save_per_epoch==0:
@@ -219,7 +257,7 @@ class Trainer(object):
         self.model.eval()
         mloss = []
         pred_result_path=os.path.join(self.checkpoint_save_dir, 'evaluate')
-        self.evaluator = Evaluator(self.model, showatt=False, pred_result_path=pred_result_path, box_top_k=256)
+        self.evaluator = Evaluator(self.model, showatt=False, pred_result_path=pred_result_path, box_top_k=cfg.VAL["BOX_TOP_K"])
         self.evaluator.clear_predict_file()
         TOP_K = 50
         with torch.no_grad():
@@ -243,7 +281,7 @@ class Trainer(object):
                     #                    for box in boxes])
                     img_vol = np.load(line[0])
                     img_vol = torch.from_numpy(img_vol)
-                    img_vol = torch.transpose(img_vol, 0, 2).contiguous() # from xyz to zyx
+                    ##img_vol = torch.transpose(img_vol, 0, 2).contiguous() # from xyz to zyx
 
                     img = img_vol.unsqueeze(dim=0).cuda().float() / 255.0
                     img_name = line[0].replace('/home/lab402/User/eason_thesis/ABUS_data/', '').replace('/','_')
@@ -293,27 +331,39 @@ class Trainer(object):
                     #if len(bboxes_prd) > 0:
                     #    bboxes_prd[:, :6] = (bboxes_prd[:, :6] / img.size(1)) * cfg.VAL['TEST_IMG_BBOX_ORIGINAL_SIZE'][0]
                     self.evaluator.store_bbox(img_name, bboxes_prd)
-
+            log_txt = ""
             if 1: #for 640
-                npy_format = npy_dir + '/{}_0.npy'
-                for i, (imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names)  in tqdm(enumerate(self.test_dataloader)):
-                    if 1:
+                npy_format = npy_dir + '/{}_test.npy'
+                n_batch = len(self.test_dataloader)
+                for i, (imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names)  in tqdm(enumerate(self.test_dataloader), total=n_batch):
+                    if (0):
                         imgs = imgs[0]
                         label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = \
                             label_sbbox[0], label_mbbox[0], label_lbbox[0], sbboxes[0], mbboxes[0], lbboxes[0]
                         img_names = [_[0] for _ in img_names]
                     imgs = imgs.to(self.device)
                     for img, img_name in zip(imgs, img_names):
-                        bboxes_prd, box_raw_data = self.evaluator.get_bbox(img, multi_test=False, flip_test=False)
+                        bboxes_prd, box_raw_data, sub_log_txt = self.evaluator.get_bbox(img, multi_test=False, flip_test=False)
+                        log_txt += sub_log_txt
                         pr999_p_conf = np.sort(box_raw_data[:, 6].detach().cpu().numpy().flatten())[-8]
                         mloss.append(pr999_p_conf)
                         if len(bboxes_prd) > 0:
                             bboxes_prd[:, :6] = (bboxes_prd[:, :6] / img.size(1)) * cfg.VAL['TEST_IMG_BBOX_ORIGINAL_SIZE'][0]
-                        self.evaluator.store_bbox(img_name, bboxes_prd)
-
-            print("Average time cost: {:.2f} sec.".format((time.time() - start_time)/len(self.test_dataloader)))
-            area_small, area_big, plt = calculate_FROC(self.data_root, npy_dir, npy_format, size_threshold=20, th_step=0.01)
+                        self.evaluator.store_bbox(img_name+"_test", bboxes_prd)
+            
+            txt = "Average time cost: {:.2f} sec.".format((time.time() - start_time)/len(self.test_dataloader))
+            print(txt)
+            annotation_file = "annotation_all.txt"
+            area_small, area_big, plt, sub_log_txt = calculate_FROC(annotation_file, npy_dir, npy_format, size_threshold=20, th_step=0.01)
+            log_txt += txt + "\n" + sub_log_txt
             plt.savefig(os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
+            if hasattr(self, "current_epoch"): # from train3D.py
+                out_log_name = os.path.join(self.checkpoint_save_dir, 'evaluate_log_e{}.txt'.format(self.current_epoch))
+            else: # from draw_froc.py
+                out_log_name = os.path.join(self.checkpoint_save_dir, 'evaluate_log.txt')
+            with open(out_log_name, "w") as f:
+                f.write(log_txt)
+            #print("SAVE IMG TO", os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
 
         end = time.time()
         logger.info("  ===cost time:{:.4f}s".format(end - start))

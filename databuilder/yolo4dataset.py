@@ -2,6 +2,7 @@
 
 import os
 import sys
+import warnings
 sys.path.append("..")
 sys.path.append("../utils")
 import utils.data_augment as dataAug
@@ -17,6 +18,9 @@ from skimage.io import imread, imsave
 import torch.nn.functional as F
 from utils.tools import xyzwhd2xyzxyz
 from PIL import Image, ImageFont, ImageDraw
+
+from utils_ccy import LRUCache
+
 def gray2rgb(image):
             w, h = image.shape
             image += np.abs(np.min(image))
@@ -28,13 +32,14 @@ def gray2rgb(image):
             return ret
 class YOLO4_3DDataset(Dataset):
 
-    def __init__(self, ImageDataset, classes, img_size=(640, 160, 640)):
+    def __init__(self, ImageDataset, classes, img_size=(640, 160, 640), cache_size=0):
         self.img_size = img_size  # For Multi-training
 
         self.__image_dataset = ImageDataset
         self.classes = classes
         self.num_classes = len(classes)
         self.class_to_id = dict(zip(self.classes, range(self.num_classes)))
+        self.cacher = LRUCache(cache_size=cache_size)
 
     def __len__(self):
         return len(self.__image_dataset)
@@ -43,6 +48,10 @@ class YOLO4_3DDataset(Dataset):
     def __getitem__(self, item):
         assert item <= len(self), 'index range error'
         #do_aug = (self.anno_file_type == 'train')
+        output, exist = self.cacher.get(item)
+        if exist:
+            return output
+
         do_aug=False
         if do_aug:
             img_org, bboxes_org, img_name = self.__image_dataset[item]
@@ -63,7 +72,6 @@ class YOLO4_3DDataset(Dataset):
             bboxes = bboxes_org
 
 
-
         del img_org, bboxes_org
         img_size = self.img_size
 
@@ -77,11 +85,13 @@ class YOLO4_3DDataset(Dataset):
                 if (img_size==org_img_shape):
                     pass
                 else:
+                    warnings.warn(f"Input shape {org_img_shape} != self.img_size = {self.img_size}")
                     img = img.permute((3, 0, 1, 2)).unsqueeze(0)
                     img = F.interpolate(img, size=img_size, mode='trilinear')
                     img = img[0]
                     img = img.permute((1, 2, 3, 0))
             else:
+                raise TypeError("2D input detected")
                 org_img_shape = img.size()[:2]
                 if (img_size==org_img_shape):
                     pass
@@ -91,6 +101,7 @@ class YOLO4_3DDataset(Dataset):
                     img = img[0]
                     img = img.permute((1, 2, 0))
             if len(img.size())==4:
+                #print("bboxes",bboxes)
                 resized_boxes = bboxes[:, :6] + 0.0
                 for i in range(3): #3D
                     resized_boxes[:, i::3] = resized_boxes[:, i::3] * img_size[i] / org_img_shape[i]
@@ -120,9 +131,23 @@ class YOLO4_3DDataset(Dataset):
                             outline ="red", width=2)
                 img.save('debug/TY_' + str(i)+'.png')
 
+        """ CCY BLOCK """
+        valid_bboxes = np.array([box for box in bboxes if (not (box[0]==0 and box[3]==0))])
+        label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self.__creat_label(valid_bboxes, img_size)
+        img = img.permute(3,0,1,2) # (Z,Y,X,C) -> (C,Z,Y,X)
+        label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = map(lambda arr: arr.astype(np.float32), [label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes])
+        #print("img:", img.shape, img.dtype, type(img))
+        #print("label_mbbox:", label_mbbox.shape, label_mbbox.dtype, type(label_mbbox))
+        #print("mbboxes:", mbboxes.shape, mbboxes.dtype, type(mbboxes))
+        output =  img, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name
+        self.cacher.set(item, output)
+        return output
+        """ END CCY BLOCK """
+
         list_label_sbbox, list_label_mbbox, list_label_lbbox, list_sbboxes, list_mbboxes, list_lbboxes = [],[],[],[],[],[]
-        for i in range(len(bboxes)):
-            valid_bboxes = np.array([box for box in bboxes[i] if (not (box[0]==0 and box[3]==0))])
+        for i in range(len(bboxes)): # n_iter == B
+            #valid_bboxes = np.array([box for box in bboxes[i] if (not (box[0]==0 and box[3]==0))]) # original
+            valid_bboxes = np.array([box for box in bboxes if (not (box[0]==0 and box[3]==0))])
             label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self.__creat_label(valid_bboxes, img_size)
             label_sbbox = torch.from_numpy(label_sbbox).float()
             label_mbbox = torch.from_numpy(label_mbbox).float()
@@ -142,7 +167,12 @@ class YOLO4_3DDataset(Dataset):
             torch.stack(list_label_sbbox), torch.stack(list_label_mbbox), torch.stack(list_label_lbbox), \
             torch.stack(list_sbboxes), torch.stack(list_mbboxes), torch.stack(list_lbboxes)
         #to B,C,X,Y,Z
-        img = img.permute((0, 4, 1, 2, 3))
+        #print("img_shape", img.shape)
+        if len(img.size())==5:
+            img = img.permute((0, 4, 1, 2, 3))
+        elif len(img.size())==4:
+            img = img.permute(3, 0, 1, 2)
+        #print(img.shape, list_label_lbbox.shape, list_lbboxes.shape)
         return img, list_label_sbbox, list_label_mbbox, list_label_lbbox, list_sbboxes, list_mbboxes, list_lbboxes, img_name
 
     def __creat_label(self, bboxes, img_size):
@@ -200,6 +230,7 @@ class YOLO4_3DDataset(Dataset):
             one_hot = np.zeros(self.num_classes, dtype=np.float32)
             one_hot[bbox_class_ind] = 1.0
             one_hot_smooth = dataAug.LabelSmooth()(one_hot, self.num_classes)
+            ## one_hot_smooth = one_hot
 
             # convert "zyxzyx" to "zyxdhw"
             bbox_yxhw = np.concatenate([(bbox_coor[3:] + bbox_coor[:3]) * 0.5,

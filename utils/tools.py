@@ -286,6 +286,8 @@ def CIOU_xyzwhd_torch(boxes1,boxes2):
     :param boxes2:[xmin,ymin,xmax,ymax]
     :return:
     '''
+    #print("boxes1:", boxes1)
+    #print("boxes2:", boxes2)
     # xywh->xyxy
     boxes1 = torch.cat([boxes1[..., :3] - boxes1[..., 3:] * 0.5,
                         boxes1[..., :3] + boxes1[..., 3:] * 0.5], dim=-1)
@@ -487,7 +489,8 @@ def nms(bboxes, score_threshold, iou_threshold, sigma=0.3, method='nms', box_top
     else:
         classes_in_img = list(set(bboxes[:, 5].astype(np.int32)))
     top_k_bboxes = []
-    print(len(bboxes), " bboxes before nms")
+    log_txt = "{} bboxes before nms\n".format(len(bboxes))
+
     if len(bboxes) > 20:
         for idx in bboxes[:, 6].argsort()[-500:][::-1]:
             best_bbox = bboxes[idx]
@@ -534,7 +537,7 @@ def nms(bboxes, score_threshold, iou_threshold, sigma=0.3, method='nms', box_top
                 break
     best_bboxes = np.array(best_bboxes)
     top_k_bboxes = []
-    print(len(best_bboxes), " bboxes after nms")
+    log_txt += "{} bboxes after nms\n".format(len(best_bboxes))
     min_conf = -1
     for i in range(min(len(best_bboxes), box_top_k)):
         max_ind = np.argmax(best_bboxes[:, -2])
@@ -543,8 +546,10 @@ def nms(bboxes, score_threshold, iou_threshold, sigma=0.3, method='nms', box_top
         best_bboxes = np.concatenate([best_bboxes[: max_ind], best_bboxes[max_ind + 1:]])
         if min_conf==-1 or min_conf>best_bbox[-2]:
             min_conf=best_bbox[-2]
-    print("min confidence in top ", len(top_k_bboxes), " boxes:" , min_conf)
-    return np.array(top_k_bboxes)
+    log_txt += "min confidence in top {} boxes: {}".format(len(top_k_bboxes),  min_conf)
+    print(log_txt)
+    log_txt += "\n"
+    return np.array(top_k_bboxes), log_txt
 
 
 def init_seeds(seed=0):

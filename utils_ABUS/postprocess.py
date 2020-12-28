@@ -20,7 +20,7 @@ def max_in_neighborhood(whmap, kernel=5):
     return hmax
 
 
-def compute_iou(box1, box2, scale):
+def compute_iou(box1, box2, scale): #box: zyxzyx, scale:zyx
     '''
         by Eason Ho
     '''
@@ -51,7 +51,8 @@ def compute_iou(box1, box2, scale):
 
     b1_area = ((b1_x1 - b1_x0) * (b1_y1 - b1_y0) * (b1_z1 - b1_z0))
     b2_area = ((b2_x1 - b2_x0) * (b2_y1 - b2_y0) * (b2_z1 - b2_z0))
-    iou = int_area / (b1_area + b2_area - int_area + 1e-9)
+    uni_area = (b1_area + b2_area - int_area)
+    iou = int_area / uni_area if uni_area!=0 else 0 # nan -> 0
     return iou
 
 

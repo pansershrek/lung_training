@@ -8,6 +8,7 @@ from utils.heatmap import imshowAtt
 import config.yolov4_config as cfg
 import time
 import torch.nn.functional as F
+import warnings
 current_milli_time = lambda: int(round(time.time() * 1000))
 class Evaluator(object):
     def __init__(self, model, showatt, pred_result_path, box_top_k):
@@ -108,12 +109,13 @@ class Evaluator(object):
         else:
             bboxes, box_raw_data = self.__predict(img, self.val_shape, (0, np.inf))
 
-        bboxes = nms(bboxes, score_threshold=self.conf_thresh, iou_threshold=self.nms_thresh, box_top_k=self.box_top_k)
+        bboxes, log_txt = nms(bboxes, score_threshold=self.conf_thresh, iou_threshold=self.nms_thresh, box_top_k=self.box_top_k)
 
-        return bboxes, box_raw_data
+        return bboxes, box_raw_data, log_txt
 
     def __predict(self, img, test_shape, valid_scale):
         org_img = img
+        #print("test_img shape in evaluator.py:",org_img.shape)
         if len(org_img.size())==4:
             _, org_d, org_h, org_w = org_img.size()
             org_shape = (org_d, org_h, org_w)
@@ -121,6 +123,7 @@ class Evaluator(object):
             if (test_shape==org_shape):
                 pass
             else:
+                warnings.warn(f"test img has shape {org_shape} != test_shape = {test_shape}")
                 img = F.interpolate(img, size=test_shape, mode='trilinear')
         else:
             _, org_h, org_w = org_img.size()
