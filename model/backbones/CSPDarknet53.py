@@ -90,10 +90,10 @@ class CSPBlock(nn.Module):
         return out
 
 class CSPFirstStage(nn.Module):
-    def __init__(self, in_channels, out_channels, dims=2):
+    def __init__(self, in_channels, out_channels, dims=2, downsample_stride=2):
         super(CSPFirstStage, self).__init__()
 
-        self.downsample_conv = Convolutional(in_channels, out_channels, 3, stride=2, dims=dims)
+        self.downsample_conv = Convolutional(in_channels, out_channels, 3, stride=downsample_stride, dims=dims)
 
         self.split_conv0 = Convolutional(out_channels, out_channels, 1, dims=dims)
         self.split_conv1 = Convolutional(out_channels, out_channels, 1, dims=dims)
@@ -119,10 +119,10 @@ class CSPFirstStage(nn.Module):
         return x
 
 class CSPStage(nn.Module):
-    def __init__(self, in_channels, out_channels, num_blocks, dims=2):
+    def __init__(self, in_channels, out_channels, num_blocks, dims=2, downsample_stride=2):
         super(CSPStage, self).__init__()
 
-        self.downsample_conv = Convolutional(in_channels, out_channels, 3, stride=2, dims=dims)
+        self.downsample_conv = Convolutional(in_channels, out_channels, 3, stride=downsample_stride, dims=dims)
 
         self.split_conv0 = Convolutional(out_channels, out_channels//2, 1, dims=dims)
         self.split_conv1 = Convolutional(out_channels, out_channels//2, 1, dims=dims)
@@ -186,19 +186,27 @@ class CSPDarknet53(nn.Module):
 
 
 
+        if (0): # ccy; it runs but uses so much GRAM
+            feature_channels = [32, 64, 128]
+            feature_channels = [int(_ * (channel_factor)) for _ in feature_channels]
+            self.stem_conv = Convolutional(in_channel, stem_channels, 3, dims=dims)
+            self.stages = nn.ModuleList([
+            CSPFirstStage(stem_channels, feature_channels[0], dims=dims, downsample_stride=2),
+            CSPStage(feature_channels[0], feature_channels[1], 8, dims=dims, downsample_stride=2),
+            CSPStage(feature_channels[1], feature_channels[2], 8, dims=dims, downsample_stride=2),
+            ])
+        else:
+            feature_channels = [int(_ * (channel_factor)) for _ in feature_channels]
+            self.stem_conv = Convolutional(in_channel, stem_channels, 3, dims=dims)
+            #self.stem_conv = Convolutional(in_channel, stem_channels, kernel_size=7, stride=2, dims=dims)
+            self.stages = nn.ModuleList([
+                CSPFirstStage(stem_channels, feature_channels[0], dims=dims),
+                CSPStage(feature_channels[0], feature_channels[1], 2, dims=dims),
+                CSPStage(feature_channels[1], feature_channels[2], 8, dims=dims),
+                CSPStage(feature_channels[2], feature_channels[3], 8, dims=dims), 
+                CSPStage(feature_channels[3], feature_channels[4], 4, dims=dims)  
+            ])
 
-
-        feature_channels = [int(_ * (channel_factor)) for _ in feature_channels]
-        self.stem_conv = Convolutional(in_channel, stem_channels, 3, dims=dims)
-        #self.stem_conv = Convolutional(in_channel, stem_channels, kernel_size=7, stride=2, dims=dims)
-
-        self.stages = nn.ModuleList([
-            CSPFirstStage(stem_channels, feature_channels[0], dims=dims),
-            CSPStage(feature_channels[0], feature_channels[1], 2, dims=dims),
-            CSPStage(feature_channels[1], feature_channels[2], 8, dims=dims),
-            CSPStage(feature_channels[2], feature_channels[3], 8, dims=dims),
-            CSPStage(feature_channels[3], feature_channels[4], 4, dims=dims)
-        ])
 
         self.feature_channels = feature_channels
         self.num_features = num_features
@@ -212,8 +220,11 @@ class CSPDarknet53(nn.Module):
         x = self.stem_conv(x)
 
         features = []
-        for stage in self.stages:
+        #print("In CSP backbone")
+        for i,stage in enumerate(self.stages):
+            x_ori_shape = x.shape
             x = stage(x)
+            #print("stage {}: {} -> {}".format(i, x_ori_shape, x.shape))
             features.append(x)
 
         return features[-self.num_features:]
@@ -306,7 +317,10 @@ class CSPDarknet53(nn.Module):
 
 def _BuildCSPDarknet53(in_channel, weight_path, resume, dims=2):
     model = CSPDarknet53(in_channel, weight_path=weight_path, resume=resume, dims=dims)
-    return model, model.feature_channels[-3:]
+    out = model, model.feature_channels[-3:]
+    #print("At _BuildCSPDarknet53:", out[1])
+    #raise TypeError
+    return out
 
 if __name__ == '__main__':
     model = CSPDarknet53()

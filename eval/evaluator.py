@@ -18,6 +18,8 @@ class Evaluator(object):
             self.classes = cfg.COCO_DATA["CLASSES"]
         elif cfg.TRAIN["DATA_TYPE"] == 'ABUS':
             self.classes = cfg.ABUS_DATA["CLASSES"]
+        elif cfg.TRAIN["DATA_TYPE"] == 'LUNG':
+            self.classes = cfg.LUNG_DATA["CLASSES"]
         else:
             self.classes = cfg.Customer_DATA["CLASSES"]
         self.pred_result_path = pred_result_path
@@ -33,6 +35,7 @@ class Evaluator(object):
         self.conf_thresh = cfg.VAL["CONF_THRESH"]
         self.nms_thresh = cfg.VAL["NMS_THRESH"]
         self.box_top_k = box_top_k
+        self.batch_1_eval = cfg.VAL["BATCH_1_EVAL"]
 
     def APs_voc(self, multi_test=False, flip_test=False):
         img_inds_file = os.path.join(self.val_data_path,  'ImageSets', 'Main', 'test.txt')
@@ -120,12 +123,14 @@ class Evaluator(object):
             _, org_d, org_h, org_w = org_img.size()
             org_shape = (org_d, org_h, org_w)
             img = img.unsqueeze(0)
-            if (test_shape==org_shape):
+            if (test_shape==org_shape) or (self.batch_1_eval):
                 pass
             else:
-                warnings.warn(f"test img has shape {org_shape} != test_shape = {test_shape}")
+                raise TypeError(f"test img has shape {org_shape} != test_shape = {test_shape}")
+                #warnings.warn(f"test img has shape {org_shape} != test_shape = {test_shape}")
                 img = F.interpolate(img, size=test_shape, mode='trilinear')
         else:
+            raise TypeError(f"2D input detected")
             _, org_h, org_w = org_img.size()
             org_shape = (org_h, org_w)
             img = img.unsqueeze(0)
@@ -140,10 +145,14 @@ class Evaluator(object):
             else: _, p_d = self.model(img)
             self.inference_time += (current_milli_time() - start_time)
         pred_bbox = p_d.squeeze().cpu().numpy()
-        bboxes = self.__convert_pred(pred_bbox, test_shape, org_shape, valid_scale)
+        if self.batch_1_eval:
+            bboxes = self.__convert_pred(pred_bbox, org_shape, org_shape, valid_scale)
+        else:
+            bboxes = self.__convert_pred(pred_bbox, test_shape, org_shape, valid_scale)
         if self.showatt and len(img):
             self.__show_heatmap(beta[2], np.copy(org_img.cpu().numpy()))
-        return bboxes, p_d
+        #return bboxes, p_d # GRAM BURDEN
+        return bboxes, p_d.cpu()
 
     def __show_heatmap(self, beta, img):
         imshowAtt(beta, img)
@@ -243,6 +252,7 @@ class Evaluator(object):
         :param use_07_metric:
         :return:dict{cls:ap}
         """
+        raise NotImplementedError()
         filename = os.path.join(self.pred_result_path, 'comp4_det_test_{:s}.txt')
         cachedir = os.path.join(self.pred_result_path, 'cache')
         annopath = os.path.join(self.val_data_path, 'Annotations', '{:s}.xml')

@@ -20,6 +20,7 @@ from utils.tools import xyzwhd2xyzxyz
 from PIL import Image, ImageFont, ImageDraw
 
 from utils_ccy import LRUCache
+from utils_hsz import AnimationViewer
 
 def gray2rgb(image):
             w, h = image.shape
@@ -32,14 +33,18 @@ def gray2rgb(image):
             return ret
 class YOLO4_3DDataset(Dataset):
 
-    def __init__(self, ImageDataset, classes, img_size=(640, 160, 640), cache_size=0):
+    def __init__(self, ImageDataset, classes, img_size=(640, 160, 640), cache_size=0, batch_1_eval=False):
         self.img_size = img_size  # For Multi-training
 
         self.__image_dataset = ImageDataset
+        self.ori_dataset = ImageDataset
         self.classes = classes
         self.num_classes = len(classes)
         self.class_to_id = dict(zip(self.classes, range(self.num_classes)))
         self.cacher = LRUCache(cache_size=cache_size)
+        self.batch_1_eval = batch_1_eval
+        if batch_1_eval:
+            warnings.warn("batch_1_eval is on!")
 
     def __len__(self):
         return len(self.__image_dataset)
@@ -75,8 +80,23 @@ class YOLO4_3DDataset(Dataset):
         del img_org, bboxes_org
         img_size = self.img_size
 
-        #img = torch.from_numpy(img).float()
-        if len(img.size())==5:
+        if self.batch_1_eval: #batch==1, don't care self.img_size
+            img_size = img.size()[:3]
+            d, h, w = img_size
+            c = img.size()[3]
+            ### IF ANY DIMENSION % 8 !=0, PAD -1 TO AVOID ERROR IN FORWARD
+            def trans(x, base=cfg.MODEL["BASE_MULTIPLE"]):
+	            return x + base - x%base if x%base else x
+            new_d, new_h, new_w = trans(d), trans(h), trans(w)
+            pad_img = torch.zeros((new_d,new_h,new_w,c), dtype=torch.float32) * (-1)   
+            pad_img[:d,:h,:w,:] = img
+            img_size = pad_img.size()[:3]
+            img = pad_img
+
+
+
+
+        elif len(img.size())==5:
             #img is a batch of data, doesn't need resize
             pass
         else:
@@ -85,7 +105,8 @@ class YOLO4_3DDataset(Dataset):
                 if (img_size==org_img_shape):
                     pass
                 else:
-                    warnings.warn(f"Input shape {org_img_shape} != self.img_size = {self.img_size}")
+                    raise TypeError(f"Input shape {org_img_shape} != self.img_size = {self.img_size}")
+                    #warnings.warn(f"Input shape {org_img_shape} != self.img_size = {self.img_size}")
                     img = img.permute((3, 0, 1, 2)).unsqueeze(0)
                     img = F.interpolate(img, size=img_size, mode='trilinear')
                     img = img[0]
@@ -107,6 +128,7 @@ class YOLO4_3DDataset(Dataset):
                     resized_boxes[:, i::3] = resized_boxes[:, i::3] * img_size[i] / org_img_shape[i]
                 bboxes[:, :6] = resized_boxes
             else:
+                raise TypeError("2D input detected")
                 resized_boxes = bboxes[:, :4] + 0.0
                 for i in range(2): #2D
                     resized_boxes[:, i::2] = resized_boxes[:, i::2] * img_size[i] / org_img_shape[i]
@@ -133,6 +155,10 @@ class YOLO4_3DDataset(Dataset):
 
         """ CCY BLOCK """
         valid_bboxes = np.array([box for box in bboxes if (not (box[0]==0 and box[3]==0))])
+        if (0):  #fine here
+            view_img = img.squeeze(-1).cpu().numpy()
+            view_box = [box[:6] for box in valid_bboxes.tolist()]
+            AnimationViewer(view_img, view_box, "Before creat_label")
         label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self.__creat_label(valid_bboxes, img_size)
         img = img.permute(3,0,1,2) # (Z,Y,X,C) -> (C,Z,Y,X)
         label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = map(lambda arr: arr.astype(np.float32), [label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes])
@@ -140,6 +166,10 @@ class YOLO4_3DDataset(Dataset):
         #print("label_mbbox:", label_mbbox.shape, label_mbbox.dtype, type(label_mbbox))
         #print("mbboxes:", mbboxes.shape, mbboxes.dtype, type(mbboxes))
         output =  img, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name
+        #print("At yolo4dataset.py")
+        #print("label_sbbox", label_sbbox.shape)
+        #print("label_mbbox", label_mbbox.shape)
+        #print("label_lbbox", label_lbbox.shape)
         self.cacher.set(item, output)
         return output
         """ END CCY BLOCK """

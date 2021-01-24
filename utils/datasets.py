@@ -26,6 +26,7 @@ class Build_Dataset(Dataset):
         elif cfg.TRAIN["DATA_TYPE"] == 'ABUS':
             self.classes = cfg.ABUS_DATA["CLASSES"]
         else:
+            raise NotImplementedError()
             self.classes = cfg.Customer_DATA["CLASSES"]
         self.num_classes = len(self.classes)
         self.class_to_id = dict(zip(self.classes, range(self.num_classes)))

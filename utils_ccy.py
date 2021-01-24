@@ -65,7 +65,8 @@ def scale_bbox(original_shape, target_shape, bboxs_ori):
         bboxs_new = []
         for bbox_ori in bboxs_ori:
             z1,y1,x1,z2,y2,x2 = bbox_ori[:6]
-            bbox_new = [int(z1*z_scale), int(y1*y_scale), int(x1*x_scale), int(z2*z_scale)+1, int(y2*y_scale)+1, int(x2*x_scale)+1] + bbox_ori[6:]
+            bbox_new = [round(z1*z_scale), round(y1*y_scale), round(x1*x_scale), round(z2*z_scale), round(y2*y_scale), round(x2*x_scale)]
+            bbox_new = bbox_new + bbox_ori[6:]
             bboxs_new.append(bbox_new)
         return bboxs_new
     

@@ -36,6 +36,8 @@ class Build_Model(nn.Module):
             self.__nC = cfg.COCO_DATA["NUM"]
         elif cfg.TRAIN["DATA_TYPE"] == 'ABUS':
             self.__nC = cfg.ABUS_DATA["NUM"]
+        elif cfg.TRAIN["DATA_TYPE"] == 'LUNG':
+            self.__nC = cfg.LUNG_DATA["NUM"]
         else:
             self.__nC = cfg.Customer_DATA["NUM"]
         if dims==3:
@@ -56,10 +58,16 @@ class Build_Model(nn.Module):
         out = []
 
         x_s, x_m, x_l = self.__yolov4(x)
+        #print("After YOLOv4:\nx_s: {}\nx_m: {}\nx_l: {}".format(x_s.shape, x_m.shape, x_l.shape))
 
-        out.append(self.__head_s(x_s))
-        out.append(self.__head_m(x_m))
-        out.append(self.__head_l(x_l))
+        out_s = self.__head_s(x_s)
+        out_m = self.__head_m(x_m)
+        out_l = self.__head_l(x_l)
+        #print("After Yolo_heads:")
+        #print(*[m[1].shape for m in [out_s, out_m, out_l]], sep="\n", end="\n"+"="*20+"\n")
+        out.append(out_s)
+        out.append(out_m)
+        out.append(out_l)
 
         if self.training:
             p, p_d = list(zip(*out))

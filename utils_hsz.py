@@ -6,59 +6,6 @@ import torch
 
 #from global_variable import MRI_DATA_PATH
 
-class AnimationViewerOriginal(object):
-    """
-    Visualizing 3D np.array in slices
-    """
-    def __init__(self, volume):
-        self.image = volume
-        self.pixel_min = np.min(volume)
-        self.pixel_max = np.max(volume)
-        print(f'shape={self.image.shape} maxvalue={self.pixel_max} minvalue={self.pixel_min}')
-        self.multi_slice_viewer()
-
-    def previous_slice(self, ax):
-        volume = ax.volume
-        ax.index = (ax.index - 1) % volume.shape[0]
-        print(ax.index)
-        ax.images[0].set_array(volume[ax.index])
-
-    def next_slice(self, ax):
-        volume = ax.volume
-
-        ax.index = (ax.index + 1) % volume.shape[0]
-        print(ax.index)
-        ax.images[0].set_array(volume[ax.index])
-
-    def remove_all_patch(self, ax):
-        for p in ax.patches:
-            p.remove()
-
-    def process_key(self, event):
-        fig = event.canvas.figure
-        ax = fig.axes[0]
-        if event.key == "up":
-            self.remove_all_patch(ax)
-            self.previous_slice(ax)
-
-        elif event.key == "down":
-            self.remove_all_patch(ax)
-            self.next_slice(ax)
-
-        fig.canvas.draw()
-
-    def multi_slice_viewer(self):
-        fig, ax = plt.subplots()
-        ax.volume = self.image
-        ax.index = self.image.shape[0] // 2
-        ax.imshow(self.image[ax.index], cmap="gray", vmin=self.pixel_min, vmax=self.pixel_max)
-        fig.canvas.mpl_connect("key_press_event", self.process_key)
-
-        y, x = self.image.shape[1:]
-
-        plt.xlim((0, x))
-        plt.ylim((0, y))
-        plt.show()
 
 class AnimationViewer(object):
     """
@@ -66,12 +13,13 @@ class AnimationViewer(object):
     Modified to support scrolling and adding bbox
     bbox is of format [z1,y1,x1,z2,y2,x2]
     """
-    def __init__(self, volume, bbox=None, verbose=True):
+    def __init__(self, volume, bbox=None, verbose=True, note=""):
         self.image = volume
         self.bbox=bbox  
         self.pixel_min = np.min(volume)
         self.pixel_max = np.max(volume)
         self.volume_shape = volume.shape
+        self.note = f"{note}: " if note !="" else ""
         print(f'shape={self.image.shape} maxvalue={self.pixel_max} minvalue={self.pixel_min}')
         if verbose:
             print(f"bbox: {bbox}")
@@ -83,7 +31,7 @@ class AnimationViewer(object):
         #print(ax.index)
         ax.images[0].set_array(volume[ax.index])
         self.add_bbox(ax)
-        ax.set_title(f"shape = {self.volume_shape}, z_index= {ax.index}")
+        ax.set_title(f"{self.note}shape = {self.volume_shape}, z_index= {ax.index}")
 
     def next_slice(self, ax):
         volume = ax.volume
@@ -92,7 +40,7 @@ class AnimationViewer(object):
         #print(ax.index)
         ax.images[0].set_array(volume[ax.index])
         self.add_bbox(ax)
-        ax.set_title(f"shape = {self.volume_shape}, z_index= {ax.index}")
+        ax.set_title(f"{self.note}shape = {self.volume_shape}, z_index= {ax.index}")
 
     def remove_all_patch(self, ax):
         for p in ax.patches:
@@ -132,10 +80,10 @@ class AnimationViewer(object):
     def multi_slice_viewer(self):
         fig, ax = plt.subplots()
         ax.volume = self.image
-        ax.index = self.image.shape[0] // 2
+        ax.index = self.image.shape[0] // 2 if len(self.bbox)==0 else int( (self.bbox[0][0]+self.bbox[0][3])/2 )
         ax.imshow(self.image[ax.index], cmap="gray", vmin=self.pixel_min, vmax=self.pixel_max)
         self.add_bbox(ax)
-        ax.set_title(f"shape = {self.volume_shape}, slice_idx= {ax.index}")
+        ax.set_title(f"{self.note}shape = {self.volume_shape}, slice_idx= {ax.index}")
         fig.canvas.mpl_connect("key_press_event", self.process_key)
         fig.canvas.mpl_connect("scroll_event", self.process_key)
 
@@ -200,12 +148,13 @@ def normalize(volume, MIN_BOUND = -1150, MAX_BOUND = 350): # WL=-400, WW=1500
     return data
     
 
-def resample_torch(image, transform, new_spacing=[1,1,1]):
+def resample_torch(image, transform, new_spacing=(1,1,1), mode="nearest"):
     """
     把每個Volume的pixel間隔(x,y,z軸)，統一成 new_spacing
+    只要image, transform, new_spacing彼此的順序一樣即可 (e.g. all (x,y,z) or all (z,y,x))
     """
     # Determine current pixel spacing
-    spacing = transform
+    spacing = np.array(transform)
 
     resize_factor = spacing / new_spacing
     new_real_shape = image.shape * resize_factor
@@ -218,9 +167,9 @@ def resample_torch(image, transform, new_spacing=[1,1,1]):
     #print("REAL RESIZE FACTOR", real_resize_factor)
     new_shape = new_shape.astype(np.int32).tolist()
     #print("new shape", new_shape)
-    t = torch.nn.functional.interpolate(t, size=new_shape, mode="trilinear") # no better
+    t = torch.nn.functional.interpolate(t, size=new_shape, mode=mode) # trilinear no better
     #print("After interpolate", t.shape)
-    image = t.squeeze(0).squeeze(0).numpy()
+    image = t.squeeze(0).squeeze(0)
     
     return image, new_spacing
 

@@ -47,6 +47,10 @@ class DicomdirManager:
         self.raw_slices = raw_slices
         if check:
             self.check()
+    
+    @property
+    def transform(self):
+        return (self.SliceThickness, self.PixelSpacing[1], self.PixelSpacing[0]) #z,y,x
 
     def check(self):
         """

@@ -10,7 +10,7 @@ import time
 import random
 import argparse
 from eval.evaluator import *
-from eval.froc import calculate_FROC
+from eval.froc import calculate_FROC, calculate_FROC_randomcrop
 from utils.tools import *
 from torch.utils.tensorboard import SummaryWriter
 import config.yolov4_config as cfg
@@ -25,9 +25,11 @@ from dataset import Tumor, LungDataset
 from databuilder.yolo4dataset import YOLO4_3DDataset
 from tqdm import tqdm
 from apex import amp
+from global_variable import USE_LUNA
 
 class Trainer(object):
-    def __init__(self, testing_mode, weight_path, checkpoint_save_dir, resume, gpu_id, accumulate, fp_16, writer, logger, crx_fold_num, dataset_name, eval_interval, npy_name):
+    def __init__(self, testing_mode, weight_path, checkpoint_save_dir, resume, gpu_id, accumulate, fp_16, writer, logger, crx_fold_num,
+                dataset_name, eval_interval, npy_name):
         #self.data_root = 'datasets/abus'
         #init_seeds(0)
         self.lung_dataset_name = dataset_name
@@ -46,6 +48,13 @@ class Trainer(object):
         self.logger.info('augmentation=False, crx_fold_num= {}'.format(crx_fold_num))
         self.testing_mode = testing_mode
         self.crx_fold_num = crx_fold_num
+
+        self.train_random_crop = cfg.TRAIN["USING_RANDOM_CROP_TRAIN"]
+        self.eval_random_crop = cfg.VAL["USING_RANDOM_CROP_EVAL"]
+        self.random_crop_file_prefix = cfg.TRAIN["RANDOM_CROP_FILE_PREFIX"]
+        self.random_crop_ncopy = cfg.TRAIN["RANDOM_CROP_NCOPY"]
+        self.batch_1_eval = cfg.VAL["BATCH_1_EVAL"]
+        ##TODO: Handle multiple random cropped input using glob.glob
         
         #train_dataset = ABUSDetectionDataset(testing_mode, augmentation=True, crx_fold_num= crx_fold_num, crx_partition= 'train', crx_valid=True, include_fp=False, root=self.data_root,
         #    batch_size=cfg.TRAIN["BATCH_SIZE"])
@@ -54,6 +63,8 @@ class Trainer(object):
         train_data, validation_data, test_data = dataset.make_kfolds_using_pids(num_k_folds=5, k_folds_seed=123, current_fold=self.crx_fold_num, valid_test_split=True, portion_list=[3,1,1])
         train_dataset = LungDataset.load(dataset_name)
         train_dataset.data = train_data
+        if self.train_random_crop:
+            train_dataset.set_random_crop(self.random_crop_file_prefix, self.random_crop_ncopy, True)
         
         #validation_dataset =  LungDataset.load(dataset_name)
         #validation_dataset.data = validation_data
@@ -63,10 +74,13 @@ class Trainer(object):
         elif self.testing_mode==1:
             test_dataset.data = test_data
         elif self.testing_mode == -1:
-            test_dataset.data = train_data[:100]
+            test_dataset.data = train_data[:50]
         else:
             raise TypeError(f"Invalid testing mode: {self.testing_mode}. {{1: 'test', 0: 'val', -1: 'train'}}")
-
+        if self.eval_random_crop:
+            #test_dataset.set_random_crop(self.random_crop_file_prefix, 1) # no reason to use ncopy > 1 during eval
+            test_dataset.set_random_crop(self.random_crop_file_prefix, 1, False) # no reason to use ncopy > 1 during eval
+   
         #useless, cache should implement on yolo dataset
         train_dataset.cacher.cache_size = 0
         test_dataset.cacher.cache_size = 0
@@ -74,8 +88,19 @@ class Trainer(object):
         if (0): #debug
             train_dataset.data = train_data[:40]
             test_dataset.data = train_data[:40]
+        if (0): #debug2
+            test_dataset.data = test_dataset.data[:3]  # 3 datum only
+        if (0): #debug3
+            train_dataset.data = train_data[:10]
 
-        self.train_dataset = YOLO4_3DDataset(train_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0)
+        if self.batch_1_eval: # adjust test_dataset.data to always return original image
+            for i in range(len(test_dataset.data)): 
+                _, bboxs_ori, pid = test_dataset.data[i]
+                datum = (None, bboxs_ori, pid) # force load original img
+                test_dataset.data[i] = datum
+            test_dataset.set_batch_1_eval(True, cfg.VAL["RANDOM_CROPPED_VOI_FIX_SPACING"])
+
+        self.train_dataset = YOLO4_3DDataset(train_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False)
         #self.train_dataset = data.Build_Dataset(anno_file_type="train", img_size=cfg.TRAIN["TRAIN_IMG_SIZE"])
 
         self.epochs = cfg.TRAIN["YOLO_EPOCHS"] if cfg.MODEL_TYPE["TYPE"] == 'YOLOv4' else cfg.TRAIN["Mobilenet_YOLO_EPOCHS"]
@@ -95,7 +120,7 @@ class Trainer(object):
         #test_dataset = ABUSDetectionDataset(testing_mode, augmentation=False, crx_fold_num= crx_fold_num, crx_partition= 'valid', crx_valid=True, include_fp=False, root=self.data_root,
         #    batch_size=cfg.VAL["BATCH_SIZE"])
 
-        self.test_dataset = YOLO4_3DDataset(test_dataset, classes=[0, 1], img_size=cfg.VAL["TEST_IMG_SIZE"], cache_size=0)
+        self.test_dataset = YOLO4_3DDataset(test_dataset, classes=[0, 1], img_size=cfg.VAL["TEST_IMG_SIZE"], cache_size=0, batch_1_eval=cfg.VAL["BATCH_1_EVAL"])
         self.test_dataloader = DataLoader(self.test_dataset,
                                             batch_size=cfg.VAL["BATCH_SIZE"],
                                             num_workers=cfg.VAL["NUMBER_WORKERS"],
@@ -227,20 +252,21 @@ class Trainer(object):
                 if self.multi_scale_train and (i+1) % 10 == 0:
                     self.train_dataset.img_size = random.choice(range(10, 20)) * 32
 
-            if epoch % self.eval_interval==0: #tag:Val #20
-                if cfg.TRAIN["DATA_TYPE"] == 'VOC' or cfg.TRAIN["DATA_TYPE"] == 'ABUS':
-                    area_small, area_big, plt, pr999_p_conf = self.evaluate()
+            if (epoch % self.eval_interval==0) or (epoch == self.epochs): #tag:Val #20
+                if cfg.TRAIN["DATA_TYPE"] == 'VOC' or cfg.TRAIN["DATA_TYPE"] == 'ABUS' or cfg.TRAIN["DATA_TYPE"] == 'LUNG':
+                    area_dist, area_iou, plt, pr999_p_conf, cpm_dist, cpm = self.evaluate()
                     logger.info("===== Validate =====".format(epoch, self.epochs))
                     if writer:
-                        #writer.add_scalar('AUC_10mm', area_small, epoch)
-                        #writer.add_scalar('AUC_15mm', area_big, epoch)
-                        writer.add_scalar('AUC', area_big, epoch)
+                        writer.add_scalar('AUC (IOU)', area_iou, epoch)
                         writer.add_scalar('EVAL_pr99.9_p_conf', pr999_p_conf, epoch)
+                        writer.add_scalar('CPM (IOU)', cpm, epoch)
+                        writer.add_scalar('AUC (dist)', area_dist, epoch)
+                        writer.add_scalar('CPM (dist)', cpm_dist, epoch)
                     save_per_epoch = 1
                     if epoch % save_per_epoch==0:
-                        self.__save_model_weights(epoch, area_big)
+                        self.__save_model_weights(epoch, area_iou)
                     logger.info('save weights done')
-                    logger.info("  ===test AUC:{:.3f}".format(area_big))
+                    logger.info("  ===test AUC:{:.3f}".format(area_iou))
 
             end = time.time()
             logger.info("  ===cost time:{:.4f}s".format(end - start))
@@ -341,20 +367,30 @@ class Trainer(object):
                         label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = \
                             label_sbbox[0], label_mbbox[0], label_lbbox[0], sbboxes[0], mbboxes[0], lbboxes[0]
                         img_names = [_[0] for _ in img_names]
+
+                    #print("eval imgs input shape:", imgs.shape)
                     imgs = imgs.to(self.device)
                     for img, img_name in zip(imgs, img_names):
+                        #print("(Eval) Current img:", img_name)
                         bboxes_prd, box_raw_data, sub_log_txt = self.evaluator.get_bbox(img, multi_test=False, flip_test=False)
+                        #print("bboxes_prd:", bboxes_prd)
+                        #print("type of bboxes_prd", type(bboxes_prd))
+                        #print("bboxes_prd max", bboxes_prd.max(axis=0))
+                        #print("box_raw_data:", box_raw_data)
                         log_txt += sub_log_txt
                         pr999_p_conf = np.sort(box_raw_data[:, 6].detach().cpu().numpy().flatten())[-8]
                         mloss.append(pr999_p_conf)
-                        if len(bboxes_prd) > 0:
+                        if len(bboxes_prd) > 0 and (not self.batch_1_eval):
                             bboxes_prd[:, :6] = (bboxes_prd[:, :6] / img.size(1)) * cfg.VAL['TEST_IMG_BBOX_ORIGINAL_SIZE'][0]
                         self.evaluator.store_bbox(img_name+"_test", bboxes_prd)
             
             txt = "Average time cost: {:.2f} sec.".format((time.time() - start_time)/len(self.test_dataloader))
             print(txt)
-            annotation_file = "annotation_all.txt"
-            area_small, area_big, plt, sub_log_txt = calculate_FROC(annotation_file, npy_dir, npy_format, size_threshold=20, th_step=0.01)
+            annotation_file = "annotation_luna.txt" if USE_LUNA else "annotation_chung.txt"
+            if self.eval_random_crop:
+                area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm = calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, size_threshold=20, th_step=0.01, ori_dataset=self.test_dataset.ori_dataset)
+            else:
+                area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm = calculate_FROC(annotation_file, npy_dir, npy_format, size_threshold=20, th_step=0.01)
             log_txt += txt + "\n" + sub_log_txt
             plt.savefig(os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
             if hasattr(self, "current_epoch"): # from train3D.py
@@ -367,7 +403,7 @@ class Trainer(object):
 
         end = time.time()
         logger.info("  ===cost time:{:.4f}s".format(end - start))
-        return area_small, area_big, plt, np.percentile(mloss, 50)
+        return area_dist, area_iou, plt, np.percentile(mloss, 50), cpm_dist, cpm
 
     def evaluate_and_logTB(self):
         writer = self.writer

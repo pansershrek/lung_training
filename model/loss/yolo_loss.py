@@ -110,6 +110,8 @@ class YoloV4Loss(nn.Module):
 
 
         # loss iou
+        #print("At yololoss.py:")
+        #print("p_d_xywh: {}; label_xywh:{}".format(p_d_xywh.shape, label_xywh.shape))
         diou = tools.CIOU_xyzwhd_torch(p_d_xywh, label_xywh).unsqueeze(-1)
 
         # The scaled weight of bbox is used to balance the impact of small objects and large objects on loss.

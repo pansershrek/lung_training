@@ -4,15 +4,22 @@ import torch.nn.functional as F
 
 
 ###########################################################################################################
-class SEModule(nn.Module):
+class SEModule_Conv(nn.Module):
     def __init__(self, channels, reduction=16, dims=2):
-        super(SEModule, self).__init__()
-        assert dims==2, 'dims==3 not implemented'
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.fc_1 = nn.Conv2d(channels, channels // reduction, kernel_size=1, padding=0)
-        self.relu = nn.ReLU(inplace=True)
-        self.fc_2 = nn.Conv2d(channels // reduction, channels, kernel_size=1, padding=0)
-        self.sigmoid = nn.Sigmoid()
+        super(SEModule_Conv, self).__init__()
+        #assert dims==2, 'dims==3 not implemented'
+        if dims == 3:
+            self.avg_pool = nn.AdaptiveAvgPool3d(1)
+            self.fc_1 = nn.Conv3d(channels, channels // reduction, kernel_size=1, padding=0)
+            self.relu = nn.ReLU(inplace=True)
+            self.fc_2 = nn.Conv3d(channels // reduction, channels, kernel_size=1, padding=0)
+            self.sigmoid = nn.Sigmoid()
+        else:
+            self.avg_pool = nn.AdaptiveAvgPool2d(1)
+            self.fc_1 = nn.Conv2d(channels, channels // reduction, kernel_size=1, padding=0)
+            self.relu = nn.ReLU(inplace=True)
+            self.fc_2 = nn.Conv2d(channels // reduction, channels, kernel_size=1, padding=0)
+            self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
         original = x
@@ -21,6 +28,33 @@ class SEModule(nn.Module):
         x = self.relu(x)
         x = self.fc_2(x)
         x = self.sigmoid(x)
+        return original * x
+
+class SEModule(nn.Module):
+    def __init__(self, channels, reduction=16, dims=2):
+        super(SEModule, self).__init__()
+        #assert dims==2, 'dims==3 not implemented'
+        assert channels >= reduction
+        if dims == 3:
+            self.avg_pool = nn.AdaptiveAvgPool3d(1)
+            self.fc_1 = nn.Linear(channels, channels // reduction)
+            self.relu = nn.ReLU(inplace=True)
+            self.fc_2 = nn.Linear(channels // reduction, channels)
+            self.sigmoid = nn.Sigmoid()
+        else:
+            self.avg_pool = nn.AdaptiveAvgPool2d(1)
+            self.fc_1 = nn.Linear(channels, channels // reduction)
+            self.relu = nn.ReLU(inplace=True)
+            self.fc_2 = nn.Linear(channels // reduction, channels)
+            self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        original = x
+        x = self.avg_pool(x).squeeze_(-1).squeeze_(-1).squeeze_(-1) # flatten
+        x = self.fc_1(x)
+        x = self.relu(x)
+        x = self.fc_2(x)
+        x = self.sigmoid(x).unsqueeze_(-1).unsqueeze_(-1).unsqueeze_(-1) # (B,C,1,1,1)
         return original * x
 
 

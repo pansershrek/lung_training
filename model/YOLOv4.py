@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
+
 import config.yolov4_config as cfg
 from .backbones.CSPDarknet53 import _BuildCSPDarknet53
 from .backbones.mobilenetv2 import _BuildMobilenetV2
@@ -9,15 +11,19 @@ from .backbones.mobilenetv3 import _BuildMobilenetV3
 class Conv(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, dims=2):
         super(Conv, self).__init__()
+        if (0): #ccy
+            padding = 0
+        else:
+            padding = kernel_size//2
         if dims==3:
             self.conv = nn.Sequential(
-                nn.Conv3d(in_channels, out_channels, kernel_size, stride, kernel_size//2, bias=False),
+                nn.Conv3d(in_channels, out_channels, kernel_size, stride, padding, bias=False),
                 nn.BatchNorm3d(out_channels),
                 nn.LeakyReLU()
             )
         else:
             self.conv = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size, stride, kernel_size//2, bias=False),
+                nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=False),
                 nn.BatchNorm2d(out_channels),
                 nn.LeakyReLU()
             )
@@ -68,18 +74,22 @@ class SpatialPyramidPooling(nn.Module):
 class Upsample(nn.Module):
     def __init__(self, in_channels, out_channels, scale=2, dims=2):
         super(Upsample, self).__init__()
-        self.upsample = nn.Sequential(
+        self.conv1x1 = nn.Sequential(
             Conv(in_channels, out_channels, 1, dims=dims),
-            nn.Upsample(scale_factor=scale)
+            #nn.Upsample(scale_factor=scale)
         )
 
-    def forward(self, x):
-        return self.upsample(x)
+    def forward(self, x, odds=(0,0,0)): # ccy: odds is to handle odd number shape
+        x = self.conv1x1(x)
+        _, _, Z, Y, X = x.shape
+        Z, Y, X = Z*2-odds[0], Y*2-odds[1], X*2-odds[2]
+        x = torch.nn.functional.interpolate(x, size=(Z,Y,X))
+        return x
+
 
 class Downsample(nn.Module):
     def __init__(self, in_channels, out_channels, scale=2, dims=2):
         super(Downsample, self).__init__()
-
         self.downsample = Conv(in_channels, out_channels, 3, 2, dims=dims)
 
     def forward(self, x):
@@ -134,9 +144,12 @@ class PANet(nn.Module):
         self.__initialize_weights()
 
     def forward(self, features):
-        features = [self.feature_transform3(features[0]), self.feature_transform4(features[1]), features[2]]
+        odds = [tuple(np.array(f.shape[-3:])%2) for f in features]
 
+        features = [self.feature_transform3(features[0]), self.feature_transform4(features[1]), features[2]]
         downstream_feature5 = self.downstream_conv5(features[2])
+        #downstream_feature4 = self.downstream_conv4(torch.cat([features[1], self.resample5_4(downstream_feature5, odds[1])], dim=1))
+        #downstream_feature3 = self.downstream_conv3(torch.cat([features[0], self.resample4_3(downstream_feature4, odds[0])], dim=1))
         downstream_feature4 = self.downstream_conv4(torch.cat([features[1], self.resample5_4(downstream_feature5)], dim=1))
         downstream_feature3 = self.downstream_conv3(torch.cat([features[0], self.resample4_3(downstream_feature4)], dim=1))
 
@@ -222,10 +235,18 @@ class YOLOv4(nn.Module):
 
     def forward(self, x):
         features = self.backbone(x)
+        #print("After backbone:", end="")
+        #print(*[m.shape for m in features], sep="\n", end="\n"+"="*20+"\n")
         features[-1] = self.spp(features[-1])
+        #print("After SPP:", end=" ")
+        #print(*[m.shape for m in features], sep="\n", end="\n"+"="*20+"\n")
         features = self.panet(features)
+        #print("After PAN:", end=" ")
+        #print(*[m.shape for m in features], sep="\n", end="\n"+"="*20+"\n")
         predicts = self.predict_net(features)
-
+        #print("After predict_net:", end=" ")
+        #print(*[m.shape for m in features], sep="\n", end="\n"+"="*20+"\n")
+        #raise EOFError
         return predicts
 
 if __name__ == '__main__':

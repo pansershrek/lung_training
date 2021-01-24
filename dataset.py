@@ -26,13 +26,15 @@ import utils_ccy as utils
 import utils_hsz
 from dicom_reader import DicomReader
 #from mri_data_searcher import DataSearcher
-from global_variable import LUNG_DATA_PATH, VOI_EXCEL_PATH, EXCLUDE_KEYWORDS, NPY_SAVED_PATH
+from global_variable import LUNG_DATA_PATH, VOI_EXCEL_PATH, EXCLUDE_KEYWORDS, NPY_SAVED_PATH, CURRENT_DATASET_PKL_PATH
+from random_crop import random_crop_preprocessing
+import config.yolov4_config as cfg
 
 #raise NotImplementedError("Work in progress")
 
 
 class Tumor():
-    def __init__(self, excel_r, pid, path, voi, comments, dcm_reader):
+    def __init__(self, excel_r, pid, path, voi, comments, dcm_reader, original_shape=None):
         """
         For each tumor/excel_row, Tumor object contains all information needed for training
 
@@ -53,7 +55,10 @@ class Tumor():
         #img = self.get_series(False)
         #self.original_shape = img.shape
         n_slice = dcm_reader.check()
-        self.original_shape = (n_slice, 512, 512)
+        if original_shape==None:
+            self.original_shape = (n_slice, 512, 512)
+        else:
+            self.original_shape = original_shape
         print(pid, self.original_shape)
 
     def get_series(self, norm_hu=True):
@@ -114,6 +119,12 @@ class LungDataset(Dataset):
         self.pid_to_excel_r_relation = {}
         self.pids = []
         self.cacher = utils.LRUCache(cache_size=0)
+        self.use_random_crop = False
+        self.random_crop_file_prefix = ""
+        self.random_crop_ncopy = 0
+        self.random_choose_one = False
+        self.batch_1_eval = False
+        self.equal_spacing = (None,None,None)
 
         df = self.voi_excel
         col_top_left_x, col_top_left_y, col_top_left_z = df.columns.get_loc("top_left_x"), df.columns.get_loc("top_left_y"), df.columns.get_loc("top_left_z")
@@ -184,9 +195,18 @@ class LungDataset(Dataset):
                     #msg="Repeated pid '{}' detected when forming dataset".format(pid)
                     #warnings.warn(msg)
                     self.pid_to_excel_r_relation[pid].append(excel_r)
-            
 
+    def set_batch_1_eval(self, batch_1_eval, equal_spacing):
+        assert batch_1_eval in (True, False)
+        assert len(equal_spacing)==3
+        self.batch_1_eval = batch_1_eval
+        self.equal_spacing = equal_spacing
 
+    def set_random_crop(self, random_crop_file_prefix, ncopy, random_choose_one=False):
+        self.use_random_crop = True
+        self.random_crop_file_prefix = random_crop_file_prefix
+        self.random_crop_ncopy = ncopy
+        self.random_choose_one = random_choose_one
 
     @classmethod
     def empty(cls):
@@ -194,31 +214,84 @@ class LungDataset(Dataset):
         return cls(entry="empty")
 
     def __len__(self): # for DataLoader
-        return len(self.data)
+        if self.use_random_crop:
+            if self.random_choose_one:
+                return len(self.data)
+            return len(self.data)*self.random_crop_ncopy
+        else:
+            return len(self.data)
 
     def __getitem__(self, i): # for DataLoader
-        npy_name, bboxs_ori, pid = self.data[i]
-        if npy_name==None: #using raw data
-            img, exist = self.cacher.get(pid)
-            if not exist: #not in cache
+        if self.use_random_crop:
+            if self.random_choose_one:
+                c = random.choice(range(self.random_crop_ncopy-1))
+                i = i
+            else:
+                c = i % self.random_crop_ncopy # index for ncopy
+                i = i // self.random_crop_ncopy # index for self.data
+            if (1): #pre-cropped
+                _, _, pid = self.data[i] # ignore npy_name if using random crop!
+                fpath = pjoin(NPY_SAVED_PATH, str(pid), "{}_c{}.pkl".format(self.random_crop_file_prefix, c+1)) # c+1 to turn c0~c4 -> c1~c5
+                #print(f"i={i}, c={c}, opening {fpath} ...")
+                with open(fpath, "rb") as f:
+                    img, bboxes = pickle.load(f)
+            else: #fresh-cropped (slow)
+                _, bboxes, pid = self.data[i]
                 img = self.get_series_by_pid(pid)  #已於dicom_reader.py處理過hu
                 img = utils_hsz.normalize(img)
-                self.cacher.set(pid, img)
-        else: #using npys
-            img, exist = self.cacher.get(pid)
-            if not exist: #not in cache
-                img = self.get_npy(pid, npy_name)
-                self.cacher.set(pid, img)
-        target_shape = tuple(img.shape)
-        img = torch.FloatTensor(img).unsqueeze_(-1) # auto convert to float32
-        original_shape = self.tumors[self.pid_to_excel_r_relation[pid][0]].original_shape
-        bboxs_scaled = utils.scale_bbox(original_shape, target_shape, bboxs_ori)
-        bboxs_scaled = np.array(bboxs_scaled, dtype=np.int64)
-        if (0): #debug
-            print("original_shape='{}', target_shape='{}', bboxs_ori='{}', bboxs_scaled='{}'".format(original_shape, target_shape, bboxs_ori, bboxs_scaled))
-            img = img.squeeze(-1).numpy()
-            utils_hsz.AnimationViewer(img, bbox=bboxs_scaled[0][:6])
-        return img, bboxs_scaled, pid
+                img = torch.tensor(img, dtype=torch.float32)
+                dcm_reader = self.tumors[ self.pid_to_excel_r_relation[pid][0] ].dcm_reader
+                transform = [dcm_reader.SliceThickness] + list(dcm_reader.PixelSpacing[::-1])
+                out = random_crop_preprocessing(img, [box[:-2] for box in bboxes], transform, cfg.TRAIN["RANDOM_CROP_SPACING"], cfg.TRAIN["TRAIN_IMG_SIZE"], n_copy=1)
+                img, bboxes = out[0] # get 1 copy only
+            img = torch.tensor(img).unsqueeze_(-1) # -> (Z,Y,X,1)
+            bboxes = np.array(bboxes)
+            assert bboxes.ndim==2
+            if bboxes.shape[1] == 6 :
+                n_box = bboxes.shape[0]
+                bboxes = np.concatenate([bboxes, np.ones((n_box,2))], axis=-1) # zyxzyx -> zyxzyx11
+            if (0): #debug
+                print("pid={}, copy#={}".format(pid, c+1))
+                view_img = img.squeeze(-1).numpy()
+                view_box = [bbox[:6] for bbox in bboxes.tolist()]
+                utils_hsz.AnimationViewer(view_img, bbox=view_box, verbose=False, note=f"{pid}_{c+1}")
+            return img, bboxes, pid
+        else:
+            npy_name, bboxs_ori, pid = self.data[i]
+            tumor = self.tumors[self.pid_to_excel_r_relation[pid][0]]
+            original_shape = tumor.original_shape
+            if npy_name==None: #using raw data
+                img, exist = self.cacher.get(pid)
+                if not exist: #not in cache
+                    img = self.get_series_by_pid(pid)  #已於dicom_reader.py處理過hu
+                    img = utils_hsz.normalize(img)
+                    if self.batch_1_eval:
+                        dcm = tumor.dcm_reader
+                        transform = (dcm.SliceThickness, dcm.PixelSpacing[1], dcm.PixelSpacing[0]) #z,y,x
+                        target_transform = self.equal_spacing
+                        d, h, w = original_shape
+                        d_new, h_new, w_new = round(d*transform[0]/target_transform[0]), round(h*transform[1]/target_transform[1]), round(w*transform[2]/target_transform[2])
+                        img = utils.resize_without_pad(img, (d_new,h_new,w_new), "nearest")
+                    self.cacher.set(pid, img)
+            else: #using npys
+                img, exist = self.cacher.get(pid)
+                if not exist: #not in cache
+                    img = self.get_npy(pid, npy_name)
+                    self.cacher.set(pid, img)
+            target_shape = tuple(img.shape)
+            #print("dataset.py getitem:", target_shape)
+            img = torch.FloatTensor(img).unsqueeze_(-1) # auto convert to float32
+            
+            bboxs_scaled = utils.scale_bbox(original_shape, target_shape, bboxs_ori)
+            bboxs_scaled = np.array(bboxs_scaled, dtype=np.int64)
+
+            if (0): #debug
+                print("pid={}, original_shape='{}', target_shape='{}', bboxs_ori='{}', bboxs_scaled='{}'".format(pid, original_shape, target_shape, bboxs_ori, bboxs_scaled))
+                view_img = img.squeeze(-1).numpy()
+                view_box = [bbox[:6] for bbox in bboxs_scaled.tolist()]
+                utils_hsz.AnimationViewer(view_img, bbox=view_box, verbose=False, note=f"{pid}")
+            return img, bboxs_scaled, pid
+            
             
 
     def get_tumor(self, i): # i defined within [ 0,len(self.tumors) )
@@ -259,7 +332,7 @@ class LungDataset(Dataset):
         with open(target, "rb") as f:
             npy = np.load(f, allow_pickle=True)
         return npy
-    
+
     
     def get_npys_by_name(self, name, pids, npy_saved_path=NPY_SAVED_PATH):
         """
@@ -378,7 +451,7 @@ class LungDataset(Dataset):
             self.train_data, self.test_data = train_data, test_data   
         return merge_folds
 
-    def make_froc_annotation_file(self, file_save_path="annotation_all.txt"):
+    def make_froc_annotation_file(self, file_save_path="annotation_chung.txt"):
         out_text = ""
         for pid in self.pids:
             line_txt = f"{pid},"
@@ -397,7 +470,7 @@ class LungDataset(Dataset):
             line_txt = line_txt[:-1] # delete trailing space
             out_text = out_text + line_txt + "\n"
         out_text = out_text[:-1]
-        with open("annotation_all.txt", "w") as f:
+        with open("annotation_chung.txt", "w") as f:
             f.write(out_text)
         
 
@@ -883,7 +956,7 @@ def preprocessed_all(overwrite_npy, force_reconstruct, model_input_shape, output
     def get_date_str(date=datetime.today()):
         return "{}{:02}{:02}".format(date.year, date.month, date.day)
     #today_str = get_date_str()
-    today_str = "20201215"
+    today_str = "20210118"
     try:
         if force_reconstruct:
             raise TypeError
@@ -898,8 +971,9 @@ def preprocessed_all(overwrite_npy, force_reconstruct, model_input_shape, output
     
 if __name__ == "__main__":
     #_test()
-    #construct_dataset()
-    #dataset = LungDataset.load("lung_dataset_20201208.pkl")
+    construct_dataset()
+    raise EOFError
+    #dataset = LungDataset.load(CURRENT_DATASET_PKL_PATH)
     preprocessed_all(overwrite_npy=True, 
                     force_reconstruct=False, 
                     model_input_shape=(256,256,256),

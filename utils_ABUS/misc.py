@@ -52,7 +52,7 @@ def build_threshold(th_step):
 
 def categorize_by_size(box):
     z0, y0, x0, z1, y1, x1 = box
-    z, y, x = (z1-z0)//4, (y1-y0)//4, (x1-x0)//4
+    #z, y, x = (z1-z0)//4, (y1-y0)//4, (x1-x0)//4  # //4 is for abus
     max_axis = max(z, y, x)
     if max_axis <= 10:
         return (1,0,0)
