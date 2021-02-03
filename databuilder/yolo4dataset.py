@@ -87,19 +87,20 @@ class YOLO4_3DDataset(Dataset):
             ### IF ANY DIMENSION % 8 !=0, PAD -1 TO AVOID ERROR IN FORWARD
             def trans(x, base=cfg.MODEL["BASE_MULTIPLE"]):
 	            return x + base - x%base if x%base else x
+            shape_before_pad = torch.tensor([d,h,w], dtype=torch.float32)
             new_d, new_h, new_w = trans(d), trans(h), trans(w)
-            pad_img = torch.zeros((new_d,new_h,new_w,c), dtype=torch.float32) * (-1)   
+            pad_img = torch.zeros((new_d,new_h,new_w,c), dtype=torch.float32) 
             pad_img[:d,:h,:w,:] = img
             img_size = pad_img.size()[:3]
             img = pad_img
-
-
-
+            
 
         elif len(img.size())==5:
             #img is a batch of data, doesn't need resize
+            shape_before_pad = torch.zeros(3, dtype=torch.float32) #dummy, to prevent error
             pass
         else:
+            shape_before_pad = torch.zeros(3, dtype=torch.float32) #dummy, to prevent error
             if len(img.size())==4 or len(img.size())==5:
                 org_img_shape = img.size()[:3]
                 if (img_size==org_img_shape):
@@ -165,7 +166,7 @@ class YOLO4_3DDataset(Dataset):
         #print("img:", img.shape, img.dtype, type(img))
         #print("label_mbbox:", label_mbbox.shape, label_mbbox.dtype, type(label_mbbox))
         #print("mbboxes:", mbboxes.shape, mbboxes.dtype, type(mbboxes))
-        output =  img, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name
+        output =  img, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name, shape_before_pad, valid_bboxes
         #print("At yolo4dataset.py")
         #print("label_sbbox", label_sbbox.shape)
         #print("label_mbbox", label_mbbox.shape)
@@ -263,14 +264,15 @@ class YOLO4_3DDataset(Dataset):
             ## one_hot_smooth = one_hot
 
             # convert "zyxzyx" to "zyxdhw"
-            bbox_yxhw = np.concatenate([(bbox_coor[3:] + bbox_coor[:3]) * 0.5,
-                                        bbox_coor[3:] - bbox_coor[:3]], axis=-1)
-
+            bbox_yxhw = np.concatenate([(bbox_coor[3:] + bbox_coor[:3]) * 0.5, # center_z, center_y, center_x
+                                        bbox_coor[3:] - bbox_coor[:3]], axis=-1) # d, h, w
+            
+            # get bbox per scale: (1,6) / (3,1) -> (3,6) == (scale, zyxdhw)
             bbox_yxhw_scaled = 1.0 * bbox_yxhw[np.newaxis, :] / strides[:, np.newaxis]
 
             iou = []
             exist_positive = False
-            for i in range(3):
+            for i in range(3): # for 3 different scales
                 anchors_yxhw = np.zeros((anchors_per_scale, 6))
                 anchors_yxhw[:, 0:3] = np.floor(bbox_yxhw_scaled[i, 0:3]).astype(np.int32) + 0.5  # 0.5 for compensation
                 anchors_yxhw[:, 3:6] = anchors[i]

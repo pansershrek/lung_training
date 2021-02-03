@@ -491,12 +491,13 @@ def nms(bboxes, score_threshold, iou_threshold, sigma=0.3, method='nms', box_top
     top_k_bboxes = []
     log_txt = "{} bboxes before nms\n".format(len(bboxes))
 
-    if len(bboxes) > 20:
-        for idx in bboxes[:, 6].argsort()[-500:][::-1]:
-            best_bbox = bboxes[idx]
-            top_k_bboxes.append(best_bbox)
+    if (1): # To speed up nms, pass only top 500 boxes into nms actually
+        if len(bboxes) > 20:
+            for idx in bboxes[:, 6].argsort()[-500:][::-1]:
+                best_bbox = bboxes[idx]
+                top_k_bboxes.append(best_bbox)
 
-        bboxes = np.array(top_k_bboxes)
+            bboxes = np.array(top_k_bboxes)
 
     classes_in_img = [_ for _ in classes_in_img if not _==0]
     best_bboxes = []

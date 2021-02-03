@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
-from model.layers.attention_layers import SEModule, CBAM
+from model.layers.attention_layers import SEModule, SEModule_Conv, CBAM
 import config.yolov4_config as cfg
 
 if 0:
@@ -78,6 +78,7 @@ class CSPBlock(nn.Module):
         self.activation = activate_name[residual_activation]
         self.attention = cfg.ATTENTION["TYPE"]
         if self.attention == 'SEnet':self.attention_module = SEModule(out_channels, dims=dims)
+        elif self.attention == 'SEnetConv':self.attention_module = SEModule_Conv(out_channels, dims=dims)
         elif self.attention == 'CBAM':self.attention_module = CBAM(out_channels, dims=dims)
         else: self.attention = None
 
@@ -148,22 +149,22 @@ class CSPStage(nn.Module):
         return x
 
 class CSPDarknet53(nn.Module):
-    def __init__(self, in_channel, stem_channels=32, feature_channels=[64, 128, 256, 512, 1024], num_features=3,weight_path=None, resume=False, dims=2):
+    def __init__(self, in_channel, stem_channels=None, feature_channels=None, num_features=3,weight_path=None, resume=False, dims=2):
         super(CSPDarknet53, self).__init__()
 
         #BS1
-        stem_channels = 4
-        channel_factor = 1/16 * 5
+        #stem_channels = 4
+        #channel_factor = 1/16 * 5
 
         #for 1080 96 #for 96
         #1080Ti
-        stem_channels = 4
-        channel_factor = 1/16 * 8
+        #stem_channels = 4
+        #channel_factor = 1/16 * 8
 
         #for 1080 640 #for 640
         #1080Ti
-        stem_channels = 2
-        channel_factor = 1/16 * 2 #like shit
+        #stem_channels = 2
+        #channel_factor = 1/16 * 2 #like shit
 
         #for 3090 640 #for 96
         #BS2
@@ -173,8 +174,19 @@ class CSPDarknet53(nn.Module):
         #today and in those best day
 
         #4_4_64
-        stem_channels = 4
-        channel_factor = 1/16 * 1
+        #stem_channels = 4
+        #channel_factor = 1/16 * 1
+
+        if (stem_channels == None):
+            stem_channels = cfg.MODEL["CSPDARKNET53_STEM_CHANNELS"]
+
+            
+        if (feature_channels == None):
+            feature_channels=cfg.MODEL["CSPDARKNET53_FEATURE_CHANNELS"]
+            channel_factor = 1.0
+           
+        #blocks_per_stage = [2,8,8,4] #original
+        blocks_per_stage = cfg.MODEL["CSPDARKNET53_BLOCKS_PER_STAGE"]
 
         #4_8_128
         #stem_channels = 4
@@ -186,14 +198,14 @@ class CSPDarknet53(nn.Module):
 
 
 
-        if (0): # ccy; it runs but uses so much GRAM
-            feature_channels = [32, 64, 128]
+        if (1): # ccy; it runs but uses so much GRAM
             feature_channels = [int(_ * (channel_factor)) for _ in feature_channels]
             self.stem_conv = Convolutional(in_channel, stem_channels, 3, dims=dims)
             self.stages = nn.ModuleList([
             CSPFirstStage(stem_channels, feature_channels[0], dims=dims, downsample_stride=2),
-            CSPStage(feature_channels[0], feature_channels[1], 8, dims=dims, downsample_stride=2),
-            CSPStage(feature_channels[1], feature_channels[2], 8, dims=dims, downsample_stride=2),
+            CSPStage(feature_channels[0], feature_channels[1], blocks_per_stage[0], dims=dims, downsample_stride=2),
+            CSPStage(feature_channels[1], feature_channels[2], blocks_per_stage[1], dims=dims, downsample_stride=2),
+            CSPStage(feature_channels[2], feature_channels[3], blocks_per_stage[2], dims=dims, downsample_stride=2),
             ])
         else:
             feature_channels = [int(_ * (channel_factor)) for _ in feature_channels]
@@ -206,7 +218,9 @@ class CSPDarknet53(nn.Module):
                 CSPStage(feature_channels[2], feature_channels[3], 8, dims=dims), 
                 CSPStage(feature_channels[3], feature_channels[4], 4, dims=dims)  
             ])
-
+        
+        assert len(feature_channels) == len(self.stages)
+        assert len(blocks_per_stage) == len(self.stages) - 1 # first_stage not changable
 
         self.feature_channels = feature_channels
         self.num_features = num_features

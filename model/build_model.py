@@ -46,6 +46,7 @@ class Build_Model(nn.Module):
             self.__out_channel = cfg.MODEL["ANCHORS_PER_SCLAE"] * (self.__nC + 5)
 
         self.__yolov4 = YOLOv4(weight_path=weight_path, out_channels=self.__out_channel, resume=resume, dims=dims)
+        #self.__yolov4 = YOLOv4() # zian
         # small
         self.__head_s = Yolo_head(nC=self.__nC, anchors=self.__anchors[0], stride=self.__strides[0], dims=dims)
         # medium
@@ -53,18 +54,23 @@ class Build_Model(nn.Module):
         # large
         self.__head_l = Yolo_head(nC=self.__nC, anchors=self.__anchors[2], stride=self.__strides[2], dims=dims)
 
+        self.verbose = cfg.MODEL["VERBOSE_SHAPE"]
+
 
     def forward(self, x):
         out = []
+        verbose = self.verbose
 
         x_s, x_m, x_l = self.__yolov4(x)
-        #print("After YOLOv4:\nx_s: {}\nx_m: {}\nx_l: {}".format(x_s.shape, x_m.shape, x_l.shape))
+        if verbose:
+            print("After YOLOv4:\nx_s: {}\nx_m: {}\nx_l: {}".format(x_s.shape, x_m.shape, x_l.shape))
 
         out_s = self.__head_s(x_s)
         out_m = self.__head_m(x_m)
         out_l = self.__head_l(x_l)
-        #print("After Yolo_heads:")
-        #print(*[m[1].shape for m in [out_s, out_m, out_l]], sep="\n", end="\n"+"="*20+"\n")
+        if verbose:
+            print("After Yolo_heads:")
+            print(*[m[1].shape for m in [out_s, out_m, out_l]], sep="\n", end="\n"+"="*20+"\n")
         out.append(out_s)
         out.append(out_m)
         out.append(out_l)

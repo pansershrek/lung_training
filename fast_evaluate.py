@@ -10,7 +10,7 @@ import utils_hsz
 import config.yolov4_config as cfg
 #import config.yolov4_config as cfg
 
-def fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k=3, check_gt=False, batch_1_eval=False, fix_spacing=(0,0,0)):
+def fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k=3, check_gt=False, batch_1_eval=False, fix_spacing=(0,0,0), use_lung_voi=False):
     """
     evaluate predictiob result based on...
     1. predicted bbox npy
@@ -53,6 +53,7 @@ def fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k=3, check_gt=False
             dataset = LungDataset.load(CURRENT_DATASET_PKL_PATH)
             dataset.get_data(dataset.pids)
             dataset.set_batch_1_eval(batch_1_eval, fix_spacing)
+            dataset.set_lung_voi(use_lung_voi)
             for i, datum in enumerate(dataset.data):
                 if datum[2]==str(pid):
                     key=i
@@ -98,21 +99,29 @@ if __name__ == "__main__":
     #plot_img_with_bbox()
     #raise EOFError
     #pid = "1926851"
-    top_k = 10
+    top_k = 3
     fix_spacing = (1.25,0.75,0.75)
     npy_name = "hu+norm_256x256x256.npy"
     exp_name = "train_256_256_256_1"
 
-    #npy_name = "random_crop_128x128x128_1.25x0.75x0.75_c1.pkl"
+    # using cropped img
     batch_1_eval = False
     npy_name = "random_crop_128x128x128_1.25x0.75x0.75_c1.pkl"
-    exp_name = "train_rc_luna_f3_try_train_debug"
+    exp_name = "train_rc_config_1_f0_lung_voi"
+
+    # using original(pad) img
+    batch_1_eval = True
+    npy_name = None
+    use_lung_voi = True
+    exp_name = "train_rc_config_1_f0_lung_voi"
 
     ## validation
     #npy_dir_path = pjoin("checkpoint", exp_name, "evaluate")
 
     ## testing (draw_froc.py)
-    epoch = 132
+    #exp_name += "_train_debug"
+    #exp_name += "_testing"
+    epoch = 425
     npy_dir_path = pjoin("preidction", exp_name, str(epoch), "evaluate")
 
     pids = os.listdir(npy_dir_path)
@@ -120,5 +129,5 @@ if __name__ == "__main__":
     for fname in pids:
         pid = fname.split("_test")[0]
         print("pid:", pid)
-        fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k, check_gt=True, batch_1_eval=batch_1_eval, fix_spacing=fix_spacing)
+        fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k, check_gt=True, batch_1_eval=batch_1_eval, fix_spacing=fix_spacing, use_lung_voi=use_lung_voi)
 

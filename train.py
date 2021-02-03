@@ -55,7 +55,7 @@ class Trainer(object):
         self.optimizer = optim.SGD(self.yolov4.parameters(), lr=cfg.TRAIN["LR_INIT"],
                                    momentum=cfg.TRAIN["MOMENTUM"], weight_decay=cfg.TRAIN["WEIGHT_DECAY"])
 
-        self.criterion = YoloV4Loss(anchors=cfg.MODEL["ANCHORS"], strides=cfg.MODEL["STRIDES"],
+        self.criterion = YoloV4Loss(anchors=cfg.MODEL["ANCHORS3D"], strides=cfg.MODEL["STRIDES"],
                                     iou_threshold_loss=cfg.TRAIN["IOU_THRESHOLD_LOSS"])
 
         self.scheduler = cosine_lr_scheduler.CosineDecayLR(self.optimizer,

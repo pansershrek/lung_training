@@ -28,7 +28,7 @@ class lightenYOLOv4(pl.LightningModule):
 
         super().__init__()
         self.model = Build_Model(weight_path=weight_path, resume=resume, dims=dims)
-        self.criterion = YoloV4Loss(anchors=cfg.MODEL["ANCHORS"], strides=cfg.MODEL["STRIDES"],
+        self.criterion = YoloV4Loss(anchors=cfg.MODEL["ANCHORS3D"], strides=cfg.MODEL["STRIDES"],
                                     iou_threshold_loss=cfg.TRAIN["IOU_THRESHOLD_LOSS"], dims=dims)
 
         self.evaluator = Evaluator(self.model, showatt=False, exp_name=exp_name)

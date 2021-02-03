@@ -26,7 +26,7 @@ import utils_ccy as utils
 import utils_hsz
 from dicom_reader import DicomReader
 #from mri_data_searcher import DataSearcher
-from global_variable import LUNG_DATA_PATH, VOI_EXCEL_PATH, EXCLUDE_KEYWORDS, NPY_SAVED_PATH, CURRENT_DATASET_PKL_PATH
+from global_variable import LUNG_DATA_PATH, VOI_EXCEL_PATH, EXCLUDE_KEYWORDS, NPY_SAVED_PATH, CURRENT_DATASET_PKL_PATH, MASK_SAVED_PATH
 from random_crop import random_crop_preprocessing
 import config.yolov4_config as cfg
 
@@ -111,7 +111,7 @@ class LungDataset(Dataset):
     """
     #forbidden_data = (("t1",134), ("t1",137)) #忽略這些series
     def __init__(self, voi_excel_path=VOI_EXCEL_PATH, lung_data_path=LUNG_DATA_PATH, entry="default"):
-
+        ## basic parameters
         self.voi_excel = pd.read_excel(voi_excel_path, sheet_name="VOI")
         self.data = []
         self.tumors = {}
@@ -119,12 +119,18 @@ class LungDataset(Dataset):
         self.pid_to_excel_r_relation = {}
         self.pids = []
         self.cacher = utils.LRUCache(cache_size=0)
+
+        ## random crop related paremeters
         self.use_random_crop = False
         self.random_crop_file_prefix = ""
         self.random_crop_ncopy = 0
         self.random_choose_one = False
         self.batch_1_eval = False
         self.equal_spacing = (None,None,None)
+
+        ## lung voi related parameters
+        self.use_lung_voi = False
+        self.lung_voi_lut = {}
 
         df = self.voi_excel
         col_top_left_x, col_top_left_y, col_top_left_z = df.columns.get_loc("top_left_x"), df.columns.get_loc("top_left_y"), df.columns.get_loc("top_left_z")
@@ -208,6 +214,18 @@ class LungDataset(Dataset):
         self.random_crop_ncopy = ncopy
         self.random_choose_one = random_choose_one
 
+    def set_lung_voi(self, use_lung_voi=True):
+        assert (use_lung_voi in (True, False))
+        self.use_lung_voi = use_lung_voi
+        if self.use_lung_voi:
+            voi_path = pjoin(MASK_SAVED_PATH, "VOI.txt")
+            with open(voi_path, "r") as f:
+                voi_txt = f.read()
+            lut = {pid:eval(voi) for pid, voi in (line.split(" ",1) for line in voi_txt.split("\n"))}  ## had tested many times
+            self.lung_voi_lut = lut
+
+
+
     @classmethod
     def empty(cls):
         """Make an empty MRIDataset object"""
@@ -260,16 +278,28 @@ class LungDataset(Dataset):
             npy_name, bboxs_ori, pid = self.data[i]
             tumor = self.tumors[self.pid_to_excel_r_relation[pid][0]]
             original_shape = tumor.original_shape
+            bboxes = bboxs_ori
             if npy_name==None: #using raw data
                 img, exist = self.cacher.get(pid)
                 if not exist: #not in cache
                     img = self.get_series_by_pid(pid)  #已於dicom_reader.py處理過hu
                     img = utils_hsz.normalize(img)
+                    if self.use_lung_voi:
+                        lung_voi = self.lung_voi_lut[pid]
+                        z1,y1,x1,z2,y2,x2 = lung_voi
+                        img = img[z1:z2+1, y1:y2+1, x1:x2+1]
+                        original_shape = img.shape ## voi shape
+                        new_bboxes = []
+                        for bbox in bboxes:
+                            oz1,oy1,ox1,oz2,oy2,ox2 = bbox[:6]
+                            bbox= [oz1-z1, oy1-y1, ox1-x1, oz2-z1, oy2-y1, ox2-x1, 1, 1] # shifting O from (0,0,0) to (z1,y1,x1)
+                            new_bboxes.append(bbox)
+                        bboxes = new_bboxes
                     if self.batch_1_eval:
                         dcm = tumor.dcm_reader
                         transform = (dcm.SliceThickness, dcm.PixelSpacing[1], dcm.PixelSpacing[0]) #z,y,x
                         target_transform = self.equal_spacing
-                        d, h, w = original_shape
+                        d, h, w = img.shape
                         d_new, h_new, w_new = round(d*transform[0]/target_transform[0]), round(h*transform[1]/target_transform[1]), round(w*transform[2]/target_transform[2])
                         img = utils.resize_without_pad(img, (d_new,h_new,w_new), "nearest")
                     self.cacher.set(pid, img)
@@ -282,7 +312,7 @@ class LungDataset(Dataset):
             #print("dataset.py getitem:", target_shape)
             img = torch.FloatTensor(img).unsqueeze_(-1) # auto convert to float32
             
-            bboxs_scaled = utils.scale_bbox(original_shape, target_shape, bboxs_ori)
+            bboxs_scaled = utils.scale_bbox(original_shape, target_shape, bboxes)
             bboxs_scaled = np.array(bboxs_scaled, dtype=np.int64)
 
             if (0): #debug

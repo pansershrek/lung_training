@@ -16,7 +16,7 @@ import utils_hsz
 import utils_ccy
 from global_variable import NPY_SAVED_PATH, CURRENT_DATASET_PKL_PATH
 
-def intersect(boxes1, boxes2, dim, device):
+def intersect(boxes1, boxes2, dim):
     '''
         Find intersection of every box combination between two sets of box
         boxes1: bounding boxes 1, a tensor of dimensions (n1, 4->6) # n1 == len(boxes1)
@@ -38,11 +38,8 @@ def intersect(boxes1, boxes2, dim, device):
     inter = torch.clamp(max_zyx - min_zyx , min=0)  # (n1, n2, dim)
     ##print("inter", inter)
     ##return inter[:, :, 0] * inter[:, :, 1]  #(n1, n2) (2D used only)
-    out = torch.ones(inter[:,:,0].shape, device=device)
-    for d in range(dim):
-        out *= inter[:,:,d]
-    return out
-def find_IoU(boxes1, boxes2, dim, device):
+    return inter.prod(-1) #general, torch.prod ~= np.multiply.reduce
+def find_IoU(boxes1, boxes2, dim):
     '''
         Find IoU between every boxes set of boxes 
         boxes1: a tensor of dimensions (n1, 2*dim) # x1,y1,x2,y2 or z1,y1,x1,z2,y2,x2
@@ -54,14 +51,19 @@ def find_IoU(boxes1, boxes2, dim, device):
         Formula: 
         (box1 ∩ box2) / (box1 u box2) = (box1 ∩ box2) / (area(box1) + area(box2) - (box1 ∩ box2 ))
     '''
-    inter = intersect(boxes1, boxes2, dim=dim, device=device)
+    inter = intersect(boxes1, boxes2, dim=dim)
     ##area_boxes1 = (boxes1[:, 2] - boxes1[:, 0]) * (boxes1[:, 3] - boxes1[:, 1]) # (x2-x1) * (y2-y1), shape==(n1,)
     ##area_boxes2 = (boxes2[:, 2] - boxes2[:, 0]) * (boxes2[:, 3] - boxes2[:, 1]) # shape==(n2,)
     n1,n2 = len(boxes1), len(boxes2)
+
+    """
     area_boxes1, area_boxes2 = torch.ones(n1, device=device), torch.ones(n2, device=device)
     for d in range(dim):
         area_boxes1 *= (boxes1[:,d+dim] - boxes1[:,d])
         area_boxes2 *= (boxes2[:,d+dim] - boxes2[:,d])
+    """
+    area_boxes1 = (boxes1[:, dim:] - boxes1[:, :dim]).prod(-1)
+    area_boxes2 = (boxes2[:, dim:] - boxes2[:, :dim]).prod(-1)
     
     area_boxes1 = area_boxes1.unsqueeze(1).expand_as(inter) #(n1, n2)
     area_boxes2 = area_boxes2.unsqueeze(0).expand_as(inter)  #(n1, n2)
@@ -97,45 +99,89 @@ def random_crop_3D(image, boxes, min_shape=None, max_shape=None):
         ###print("Current box", box)
         ###print("Current center", center_bb)
         while True:
+            NEED_PAD = False
             # Define cropped voi shape (1*ori_box_dwh ~ 4*ori_box_dwh)
             if min_shape==None:
                 min_shape = (ori_box_d, ori_box_h, ori_box_w)
             if max_shape==None:
                 max_shape = (4.0*ori_box_d, 4.0*ori_box_h, 4.0*ori_box_w)
-            new_d = random.uniform(min_shape[0], max_shape[0])
-            new_h = random.uniform(min_shape[1], max_shape[1])
-            new_w = random.uniform(min_shape[2], max_shape[2])        
+            new_d = int(random.uniform(min_shape[0], max_shape[0]))
+            new_h = int(random.uniform(min_shape[1], max_shape[1]))
+            new_w = int(random.uniform(min_shape[2], max_shape[2]))      
             # Define new_z1, new_y1==top, new_x1==left
             # the second part force the cropped img contains the bbox
             #left = max( 0, center_bb[2]-new_w*0.8+1, random.uniform(ori_x1-ori_box_w*2.5, ori_x1+ori_box_w*0.4) )
             #left = max( 0, center_bb[2]-new_w*0.8+1, random.uniform(ori_x1-ori_box_w*2.5, ori_x1) )
-            if (0):
+            if (0): #bad method, bbox may be cut
                 left = max( 0, center_bb[2]-new_w*0.8+1, random.uniform(ori_x1-new_w*0.7, ori_x1-new_w*0.1) )
                 right = left + new_w
                 top = max( 0, center_bb[1]-new_h*0.8+1, random.uniform(ori_y1-new_h*0.7, ori_y1-new_h*0.1) )
                 bottom = top + new_h
                 z1 = max( 0, center_bb[0]-new_d*0.8+1, random.uniform(ori_z1-new_d*0.7, ori_z1-new_d*0.1) )
                 z2 = z1 + new_d  
-            else:
+            if (0): #ok method, but bbox may be very close to border
                 left = random.uniform( max(ori_x1+ori_box_w-new_w,0), min(ori_x1, original_w-1-new_w) )
                 right = left + new_w
                 top = random.uniform( max(ori_y1+ori_box_h-new_h,0), min(ori_y1, original_h-1-new_h) )
                 bottom = top + new_h
                 z1 = random.uniform( max(ori_z1+ori_box_d-new_d,0), min(ori_z1, original_d-1-new_d) )
                 z2 = z1 + new_d
+
+            if (1): # keep bbox away from border
+                away_x = 10 # unit: pixel
+                away_y = 10
+                away_z = 10
+                x_max = original_w-1-new_w
+                y_max = original_h-1-new_h
+                z_max = original_d-1-new_d
+                left = random.uniform( max(min(ori_x1+ori_box_w-new_w+away_x, x_max), 0), min(max(ori_x1-away_x,0), x_max) )
+                right = left + new_w
+                top =  random.uniform( max(min(ori_y1+ori_box_h-new_h+away_y, y_max), 0), min(max(ori_y1-away_y,0), y_max) )
+                bottom = top + new_h
+                z1 =   random.uniform( max(min(ori_z1+ori_box_d-new_d+away_z, z_max), 0), min(max(ori_z1-away_z,0), z_max) )
+                z2 = z1 + new_d
+            try:
                 assert 0<=left<=right<original_w
                 assert 0<=top<=bottom<original_h
                 assert 0<=z1<=z2<original_d
+            except:
+                msg =  f"left: {left}, right: {right}, original_w: {original_w}\n"
+                msg += f"top: {top}, bottom: {bottom}, original_h: {original_h}\n"
+                msg += f"z1: {z1}, z2: {z2}, original_d: {original_d}\n"
+                print(msg)
+                ### the error may stem from (original_w < crop_w). i.e. need crop all + padding
+                if (original_w < new_w):
+                    left, right = 0, original_w-1
+                    NEED_PAD = True
+                if (original_h < new_h):
+                    top, bottom = 0, original_h-1
+                    NEED_PAD = True
+                if (original_d < new_d):
+                    z1, z2 = 0, original_d-1
+                    NEED_PAD = True
+                if not NEED_PAD: # unknown errors
+                    raise 
+                
+
+            
 
             crop = torch.tensor([int(z1), int(top), int(left), int(z2), int(bottom), int(right)], dtype=torch.float32, device=device) # z1,y1,x1,z2,y2,x2
             #print("Cropping :", [int(z1), int(top), int(left), int(z2), int(bottom), int(right)])
             # Calculate IoU  between the crop and the bounding boxes
-            overlap = find_IoU(crop.unsqueeze(0), box.unsqueeze(0) , dim=3, device=device) #(1, #objects)  # np.expand_dims ~= torch.unsqueeze
+            overlap = find_IoU(crop.unsqueeze(0), box.unsqueeze(0) , dim=3) #(1, #objects)  # np.expand_dims ~= torch.unsqueeze
             overlap = overlap.squeeze(0)
             # If the crop bounding box doesn't has a IoU of greater than the minimum(mode), try again
             #Crop
             new_image = image[:, int(z1):int(z2), int(top):int(bottom), int(left):int(right)] #(C, new_d, new_h, new_w)
             
+            #PAD if needed
+            if NEED_PAD:
+                warnings.warn("padding image due to 'ori_shape < crop_shape' (NEED_PAD)")
+                c, d, w, h = new_image.shape
+                assert (d, w, h) != (new_d, new_h, new_w)
+                pad_img = torch.zeros((c,new_d,new_h,new_w), dtype=torch.float32)  
+                pad_img[:,:d,:h,:w] = new_image
+                new_image = pad_img
             #Center of bounding boxes
             center_in_crop = (z2 > center_bb[0] > z1) * \
                                 (bottom > center_bb[1] > top) * \
@@ -180,7 +226,7 @@ def random_crop_3D(image, boxes, min_shape=None, max_shape=None):
         out_vois.append(new_image)
         out_boxes.append(new_boxes)
         return out_vois, out_boxes  ## if want 1 voi per image
-    return out_vois, out_boxes
+    #return out_vois, out_boxes  ## unreachable
 
 
 
@@ -269,7 +315,7 @@ def random_crop_preprocessing(img, bboxes, transform, target_transform, target_i
                 if type(bboxes[0])!=list:
                     bboxes = [bbox.tolist() for bbox in bboxes]
                 bboxes= utils_ccy.scale_bbox((d,h,w), (d_new,h_new,w_new), bboxes)
-                if (0): #debug view
+                if (0): #debug view: original + equal_spacing
                     AnimationViewer(img.squeeze(0).cpu().numpy().astype(np.float32), bbox=bboxes)
             bboxes = torch.tensor(bboxes, dtype=torch.float32, device=device )
             new_imgs, new_boxes = random_crop_3D(img, bboxes, tuple(fix_shape), tuple(fix_shape))
@@ -297,7 +343,7 @@ def random_crop_preprocessing(img, bboxes, transform, target_transform, target_i
         new_img = new_img.cpu()
         out.append( (new_img, new_boxes) )
 
-        if (0): # debug view
+        if (0): # debug view: cropped
             view_box = new_boxes
             AnimationViewer(new_img.squeeze(0).numpy().astype(np.float32), bbox=view_box, note=f"Crop{i+1}")
 
@@ -314,7 +360,7 @@ def random_crop_preprocessing(img, bboxes, transform, target_transform, target_i
     return out
 
                 
-def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape=(128,128,128), n_copy=10, save=False):
+def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape=(128,128,128), n_copy=10, save=False, device="cuda"):
     """ target_input_shape must be multiples of 32, otherwise it will be very complicated!!! """
     global Tumor, LungDataset
     from dataset import Tumor, LungDataset
@@ -322,14 +368,20 @@ def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape
     dataset = LungDataset.load(CURRENT_DATASET_PKL_PATH)
     #dataset.get_data(dataset.pids, name="hu+norm_256x256x256_fp16.npy")
     dataset.get_data(dataset.pids)
-    #dcm_reader = dataset.tumors[4].dcm_reader
-    #x,y = dcm_reader.PixelSpacing
-    #z = dcm_reader.SliceThickness
-    #transform = (z,y,x)
+
+    ## make sure the inputs are original images
+    dataset.batch_1_eval = False # avoid resizing
+    dataset.use_random_crop = False # avoid cropped img
+    assert all([npy_name==None for npy_name, _, _ in dataset.data]) # avoid loading npy
+
     target_transform_text = "x".join(str(i) for i in target_transform)
     target_input_shape_text = "x".join(str(i) for i in target_input_shape)
-    device = torch.device("cuda")
-    for img, bboxes, pid in tqdm(dataset, desc="RandomCropPreprocessing",total=len(dataset)):
+    device = torch.device(device)
+    if (0): #快進data (less I/O)
+        #dataset.data = dataset.data[95+315+17:] #the place where error had occurred before ...
+        ###TODO: pid = 20732541 (idx=95+315), seems to have unreasonable transform!! delete data??
+        dataset.data = dataset.data[:]
+    for i, (img, bboxes, pid) in tqdm(enumerate(dataset), desc="RandomCropPreprocessing",total=len(dataset)):
         #print("pid", pid) 
         dcm_reader = dataset.tumors[ dataset.pid_to_excel_r_relation[pid][0] ].dcm_reader
         transform = [dcm_reader.SliceThickness] + list(dcm_reader.PixelSpacing[::-1])
@@ -361,6 +413,7 @@ def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape
                     pickle.dump(to_save, f)
                     #print("save to", name)
             else:
+                pass
                 print("Fake saving to", name)
 
 def _test_pkl():
@@ -378,5 +431,6 @@ if __name__ == "__main__":
     #_test_iou()
     #_test_random_crop()
     #_test_pixelspacing()
-    _dataset_preprocessing(save=True, n_copy=5, target_transform=(1.25, 0.75, 0.75))
+    device = "cpu"
+    _dataset_preprocessing(save=False, n_copy=10, target_transform=(1.25, 0.75, 0.75), target_input_shape=(128,256,256), device=device)
     #_test_pkl()

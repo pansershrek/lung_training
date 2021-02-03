@@ -241,7 +241,7 @@ if __name__ == "__main__":
 #
 #     def __creat_label(self, bboxes):
 #
-#         anchors = np.array(cfg.MODEL["ANCHORS"])
+#         anchors = np.array(cfg.MODEL["ANCHORS3D"])
 #         strides = np.array(cfg.MODEL["STRIDES"])
 #         train_output_size = self.img_size / strides
 #         anchors_per_scale = cfg.MODEL["ANCHORS_PER_SCLAE"]

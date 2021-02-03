@@ -86,9 +86,12 @@ def interpolate_FROC_data(froc_x, froc_y, max_fps=(8, 4, 2, 1, 0.5, 0.25, 0.125)
                     max_fp = max_fps.pop(0)
             else:
                 log_txt += "skip i = {}, FP = {}, sen = {}\n".format(i, int(FP*100)/100, sen)
+            if len(max_fps)==0 and (max_fp in sens_for_cpm):
+                break
         else:
-            log_txt += "No datapoint in froc_x < max_fp = {} (i.e. FP so mush after nms)\n".format(max_fp)
-            sens_for_cpm[max_fp] = 0  # only no prediction can get this max_fp
+            for max_fp in [max_fp]+list(max_fps):
+                log_txt += "No datapoint in froc_x < max_fp = {} (i.e. FP so mush after nms)\n".format(max_fp)
+                sens_for_cpm[max_fp] = 0  # only no prediction can get this max_fp
 
         froc_x = froc_x[take_is[0]:]
         froc_y = froc_y[take_is[0]:]
@@ -113,7 +116,7 @@ def froc_take_max(froc_x, froc_y):
     froc_y = np.array(froc_y_tmp)
     return froc_x, froc_y
 
-def calculate_FROC(annotation_file, npy_dir, npy_format, size_threshold=0, th_step=0.05, eval_input_size=cfg.VAL["TEST_IMG_SIZE"], dynamic_input_shape=cfg.VAL["BATCH_1_EVAL"]):
+def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, eval_input_size=cfg.VAL["TEST_IMG_SIZE"], dynamic_input_shape=cfg.VAL["BATCH_1_EVAL"]):
     #size_threshold is 20 in thesis
     num_npy = os.listdir(npy_dir) # dir is your directory path
     total_pass = len(num_npy)
@@ -122,8 +125,8 @@ def calculate_FROC(annotation_file, npy_dir, npy_format, size_threshold=0, th_st
     PERF_per_thre_s=[]
     true_num, true_small_num = 0, 0
     log_txt = ""
-    with open(annotation_file, 'r') as f:
-        lines = f.read().splitlines()
+    #with open(annotation_file, 'r') as f:
+    #    lines = f.read().splitlines()
     box_lists_cacher = {}
 
     for i, score_hit_thre in enumerate(all_thre):
@@ -147,15 +150,13 @@ def calculate_FROC(annotation_file, npy_dir, npy_format, size_threshold=0, th_st
         current_pass = 0
         #annotation_file = os.path.join(root, 'annotations/rand_all.txt'
 
-        for line in lines:
-            line = line.split(',', 4)
+        for pid, boxes in gt_lut.items():
             # Always use 640,160,640 to compute iou
             if not dynamic_input_shape:
                 size = eval_input_size
                 scale = (size[0]/int(line[1]),size[1]/int(line[2]),size[2]/int(line[3]))
             else:
                 scale = (1., 1., 1.)
-            pid = line[0]#.replace('/', '_')
             pred_npy = npy_format.format(pid)
             if not os.path.exists(pred_npy):
                 continue
@@ -168,9 +169,11 @@ def calculate_FROC(annotation_file, npy_dir, npy_format, size_threshold=0, th_st
                     print("\n")
                     log_txt += "\n"
 
-            boxes = line[-1].split(' ')
-            boxes = list(map(lambda box: box.split(','), boxes))
-            true_box = [list(map(float, box)) for box in boxes]
+            #boxes = line[-1].split(' ')
+            #boxes = list(map(lambda box: box.split(','), boxes))
+            #true_box = [list(map(float, box)) for box in boxes]
+            #true_box_s = true_box
+            true_box = boxes
             true_box_s = true_box
 
             if (0): #abus original
@@ -188,7 +191,7 @@ def calculate_FROC(annotation_file, npy_dir, npy_format, size_threshold=0, th_st
                 true_num += len(true_box)
                 true_small_num += len(true_box_s)
 
-            file_name = line[0]
+            file_name = pid
             file_table.append(file_name)
 
             ##########################################

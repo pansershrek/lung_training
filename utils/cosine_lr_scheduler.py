@@ -16,6 +16,7 @@ class CosineDecayLR(_LRScheduler):
         self.__lr_min = lr_min
         self.__lr_max = lr_init
         self.__warmup = warmup
+        self._last_lr = lr_init
         super(CosineDecayLR, self).__init__(optimizer, last_epoch)
 
     def step(self, epoch=None):
@@ -27,11 +28,14 @@ class CosineDecayLR(_LRScheduler):
             T_max = self.__T_max - self.__warmup
             epoch = epoch - self.__warmup
             lr = self.__lr_min + 0.5 * (self.__lr_max - self.__lr_min) * (1 + np.cos(epoch/T_max * np.pi))
+        self._last_lr = lr
         for param_group in self.__optimizer.param_groups:
             param_group["lr"] = lr
 
 
 if __name__ == '__main__':
+    import sys
+    sys.path.append("D:/CH/LungDetection/training")
     import matplotlib.pyplot as plt
     from model.YOLOv4 import YOLOv4
     import torch.optim as optim
@@ -45,12 +49,14 @@ if __name__ == '__main__':
     for t in range(50):
         for i in range(2068):
             scheduler.step(2068*t+i)
+            print(scheduler.get_last_lr())
             y.append(optimizer.param_groups[0]['lr'])
 
-    print(y)
+    #print(y)
     plt.figure()
     plt.plot(y, label='LambdaLR')
     plt.xlabel('steps')
     plt.ylabel('LR')
     plt.tight_layout()
-    plt.savefig("../data/lr.png", dpi=300)
+    plt.show()
+    #plt.savefig("../data/lr.png", dpi=300)

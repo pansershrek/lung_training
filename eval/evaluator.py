@@ -96,7 +96,7 @@ class Evaluator(object):
         #     f.write("%s %s %s %s %s %s\n" % (class_name, score, str(xmin), str(ymin), str(xmax), str(ymax)))
         # f.close()
 
-    def get_bbox(self, img, multi_test=False, flip_test=False):
+    def get_bbox(self, img, multi_test=False, flip_test=False, shape_before_pad=[0,0,0]):
         if multi_test:
             test_input_sizes = range(320, 640, 96)
             bboxes_list = []
@@ -110,13 +110,13 @@ class Evaluator(object):
             bboxes = np.row_stack(bboxes_list)
             box_raw_data = []
         else:
-            bboxes, box_raw_data = self.__predict(img, self.val_shape, (0, np.inf))
+            bboxes, box_raw_data = self.__predict(img, self.val_shape, (0, np.inf), shape_before_pad)
 
         bboxes, log_txt = nms(bboxes, score_threshold=self.conf_thresh, iou_threshold=self.nms_thresh, box_top_k=self.box_top_k)
 
         return bboxes, box_raw_data, log_txt
 
-    def __predict(self, img, test_shape, valid_scale):
+    def __predict(self, img, test_shape, valid_scale, shape_before_pad=[0,0,0]):
         org_img = img
         #print("test_img shape in evaluator.py:",org_img.shape)
         if len(org_img.size())==4:
@@ -146,7 +146,7 @@ class Evaluator(object):
             self.inference_time += (current_milli_time() - start_time)
         pred_bbox = p_d.squeeze().cpu().numpy()
         if self.batch_1_eval:
-            bboxes = self.__convert_pred(pred_bbox, org_shape, org_shape, valid_scale)
+            bboxes = self.__convert_pred(pred_bbox, org_shape, org_shape, valid_scale, shape_before_pad)
         else:
             bboxes = self.__convert_pred(pred_bbox, test_shape, org_shape, valid_scale)
         if self.showatt and len(img):
@@ -162,7 +162,7 @@ class Evaluator(object):
         return torch.from_numpy(img[np.newaxis, ...]).float()
 
 
-    def __convert_pred(self, pred_bbox, test_input_size, org_img_shape, valid_scale):
+    def __convert_pred(self, pred_bbox, test_input_size, org_img_shape, valid_scale, shape_before_pad=(0,0,0)):
         """
         Filter out the prediction box to remove the unreasonable scale of the box
         """
@@ -174,12 +174,15 @@ class Evaluator(object):
             # (xmin_org, xmax_org) = ((xmin, xmax) - dw) / resize_ratio
             # (ymin_org, ymax_org) = ((ymin, ymax) - dh) / resize_ratio
             org_d, org_h, org_w = org_img_shape
-            resize_ratio = 1.0 * min([test_input_size[i] / org_img_shape[i] for i in range(3)])
 
-            dd = (test_input_size[0] - resize_ratio * org_d) / 2
-            dh = (test_input_size[1] - resize_ratio * org_h) / 2
-            dw = (test_input_size[2] - resize_ratio * org_w) / 2
-
+            if not self.batch_1_eval:
+                resize_ratio = 1.0 * min([test_input_size[i] / org_img_shape[i] for i in range(3)])
+                dd = (test_input_size[0] - resize_ratio * org_d) / 2
+                dh = (test_input_size[1] - resize_ratio * org_h) / 2
+                dw = (test_input_size[2] - resize_ratio * org_w) / 2
+            else:
+                resize_ratio = 1.0
+                dd = dh = dw = 0
             #pred_coor[:, 0::3] = 1.0 * (pred_coor[:, 0::3] - dd) / resize_ratio
             #pred_coor[:, 1::3] = 1.0 * (pred_coor[:, 1::3] - dh) / resize_ratio
             #pred_coor[:, 2::3] = 1.0 * (pred_coor[:, 2::3] - dw) / resize_ratio
@@ -238,6 +241,19 @@ class Evaluator(object):
         coors = pred_coor[mask]
         scores = scores[mask]
         classes = classes[mask]
+
+        # (6)ccy: Remove bboxes that touch padded area for batch_1_eval
+        if self.batch_1_eval:
+            shape_before_pad = np.array(shape_before_pad)
+            assert shape_before_pad.shape == (3,)
+            invalid_mask_z = (coors[:, 3] > shape_before_pad[0]-1) # z2 > ori_z
+            invalid_mask_y = (coors[:, 4] > shape_before_pad[1]-1) # y2 > ori_y
+            invalid_mask_x = (coors[:, 5] > shape_before_pad[2]-1) # x2 > ori_x
+            invalid_mask = invalid_mask_z + invalid_mask_y + invalid_mask_x # the "+" here acts like "logical_or"
+            mask = np.invert(invalid_mask)
+            coors = coors[mask]
+            scores = scores[mask]
+            classes = classes[mask]
 
         bboxes = np.concatenate([coors, scores[:, np.newaxis], classes[:, np.newaxis]], axis=-1)
         return bboxes

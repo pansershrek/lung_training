@@ -113,6 +113,8 @@ class YoloV4Loss(nn.Module):
         #print("At yololoss.py:")
         #print("p_d_xywh: {}; label_xywh:{}".format(p_d_xywh.shape, label_xywh.shape))
         diou = tools.CIOU_xyzwhd_torch(p_d_xywh, label_xywh).unsqueeze(-1)
+        if (1):
+            diou = diou * cfg.TRAIN["CIOU_LOSS_MULTIPLIER"]
 
         # The scaled weight of bbox is used to balance the impact of small objects and large objects on loss.
         if dims==3:
@@ -163,6 +165,6 @@ if __name__ == "__main__":
     mbboxes = torch.rand(3, 150, 4)
     lbboxes = torch.rand(3, 150, 4)
 
-    loss, loss_xywh, loss_conf, loss_cls = YoloV4Loss(cfg.MODEL["ANCHORS"], cfg.MODEL["STRIDES"])(p, p_d, label_sbbox,
+    loss, loss_xywh, loss_conf, loss_cls = YoloV4Loss(cfg.MODEL["ANCHORS3D"], cfg.MODEL["STRIDES"])(p, p_d, label_sbbox,
                                     label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes)
     print(loss)

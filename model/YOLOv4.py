@@ -232,22 +232,30 @@ class YOLOv4(nn.Module):
 
         # predict
         self.predict_net = PredictNet(feature_channels, out_channels, dims=dims)
+        
+        self.verbose = cfg.MODEL["VERBOSE_SHAPE"]
 
     def forward(self, x):
         features = self.backbone(x)
-        #print("After backbone:", end="")
-        #print(*[m.shape for m in features], sep="\n", end="\n"+"="*20+"\n")
+        verbose = self.verbose
+        if verbose:
+            print("After backbone:", end="")
+            print(*[m.shape for m in features], sep="\n", end="\n"+"="*20+"\n")
         features[-1] = self.spp(features[-1])
-        #print("After SPP:", end=" ")
-        #print(*[m.shape for m in features], sep="\n", end="\n"+"="*20+"\n")
+        if verbose:
+            print("After SPP:", end=" ")
+            print(*[m.shape for m in features], sep="\n", end="\n"+"="*20+"\n")
         features = self.panet(features)
-        #print("After PAN:", end=" ")
-        #print(*[m.shape for m in features], sep="\n", end="\n"+"="*20+"\n")
+        if verbose:
+            print("After PAN:", end=" ")
+            print(*[m.shape for m in features], sep="\n", end="\n"+"="*20+"\n")
         predicts = self.predict_net(features)
-        #print("After predict_net:", end=" ")
-        #print(*[m.shape for m in features], sep="\n", end="\n"+"="*20+"\n")
+        if verbose:
+            print("After predict_net:", end=" ")
+            print(*[m.shape for m in features], sep="\n", end="\n"+"="*20+"\n")
         #raise EOFError
         return predicts
+
 
 if __name__ == '__main__':
     cuda = torch.cuda.is_available()
@@ -260,3 +268,4 @@ if __name__ == '__main__':
         print(predicts[0].shape)
         print(predicts[1].shape)
         print(predicts[2].shape)
+        break

@@ -15,7 +15,7 @@ class AnimationViewer(object):
     """
     def __init__(self, volume, bbox=None, verbose=True, note=""):
         self.image = volume
-        self.bbox=bbox  
+        self.bbox=bbox  if bbox!=None else ()
         self.pixel_min = np.min(volume)
         self.pixel_max = np.max(volume)
         self.volume_shape = volume.shape
