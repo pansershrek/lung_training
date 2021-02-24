@@ -99,7 +99,7 @@ if __name__ == "__main__":
     #plot_img_with_bbox()
     #raise EOFError
     #pid = "1926851"
-    top_k = 3
+    top_k = 4
     fix_spacing = (1.25,0.75,0.75)
     npy_name = "hu+norm_256x256x256.npy"
     exp_name = "train_256_256_256_1"
@@ -113,16 +113,16 @@ if __name__ == "__main__":
     batch_1_eval = True
     npy_name = None
     use_lung_voi = True
-    exp_name = "train_rc_config_1_f0_lung_voi"
+    exp_name = "train_rc_config_3_f0"
 
     ## validation
-    #npy_dir_path = pjoin("checkpoint", exp_name, "evaluate")
+    npy_dir_path = pjoin("checkpoint", exp_name, "evaluate")
 
     ## testing (draw_froc.py)
     #exp_name += "_train_debug"
     #exp_name += "_testing"
-    epoch = 425
-    npy_dir_path = pjoin("preidction", exp_name, str(epoch), "evaluate")
+    #epoch = 306
+    #npy_dir_path = pjoin("preidction", exp_name, str(epoch), "evaluate")
 
     pids = os.listdir(npy_dir_path)
     #pids = [""]

@@ -116,7 +116,7 @@ def froc_take_max(froc_x, froc_y):
     froc_y = np.array(froc_y_tmp)
     return froc_x, froc_y
 
-def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, eval_input_size=cfg.VAL["TEST_IMG_SIZE"], dynamic_input_shape=cfg.VAL["BATCH_1_EVAL"]):
+def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, eval_input_size=cfg.VAL["TEST_IMG_SIZE"], dynamic_input_shape=cfg.VAL["BATCH_1_EVAL"], det_tp_iou_thresh=cfg.VAL["TP_IOU_THRESH"], return_fp_bboxes=False):
     #size_threshold is 20 in thesis
     num_npy = os.listdir(npy_dir) # dir is your directory path
     total_pass = len(num_npy)
@@ -128,7 +128,7 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
     #with open(annotation_file, 'r') as f:
     #    lines = f.read().splitlines()
     box_lists_cacher = {}
-
+    fp_bboxes_all_pid = {} # only used wher score_hit_thre==0.00
     for i, score_hit_thre in enumerate(all_thre):
         txt='Use threshold: {:.3f}'.format(score_hit_thre)
         print(txt)
@@ -149,9 +149,7 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
 
         current_pass = 0
         #annotation_file = os.path.join(root, 'annotations/rand_all.txt'
-
         for pid, boxes in gt_lut.items():
-            # Always use 640,160,640 to compute iou
             if not dynamic_input_shape:
                 size = eval_input_size
                 scale = (size[0]/int(line[1]),size[1]/int(line[2]),size[2]/int(line[3]))
@@ -227,11 +225,12 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
                     print("FN = {}: {}".format(FN_IOU_1, line[0]))
             
             if (1): #using iou
-                TP, FP, FN, hits_index, hits_iou, hits_score = eval_precision_recall(out_boxes, true_box, det_thresh=cfg.VAL["TP_IOU_THRESH"], scale=scale) #det_thresh == IOU thresh
+                TP, FP, FN, hits_index, hits_iou, hits_score = eval_precision_recall(out_boxes, true_box, det_thresh=det_tp_iou_thresh, scale=scale) #det_thresh == IOU thresh
                 #print(f"TP:{TP}, FP:{FP}, FN:{FN}, hits_index:{hits_index}, hits_iou:{hits_iou}, hits_score:{hits_score}")
             if (1): # using luna or other distance criteria
-                TP_dist, FP_dist, FN_dist, hits_index_dist, hits_dist, hits_score_dist, TP_by_size = eval_precision_recall_by_dist(out_boxes, true_box, dist_thresh=None, scale=scale, spacing=cfg.VAL["RANDOM_CROPPED_VOI_FIX_SPACING"])
-
+                TP_dist, FP_dist, FN_dist, hits_index_dist, hits_dist, hits_score_dist, TP_by_size, fp_bboxes = eval_precision_recall_by_dist(out_boxes, true_box, dist_thresh=None, scale=scale, spacing=cfg.VAL["RANDOM_CROPPED_VOI_FIX_SPACING"], return_fp_bboxes=True)
+                if return_fp_bboxes and score_hit_thre == 0.0:
+                    fp_bboxes_all_pid[pid] = fp_bboxes
 
             TP_table.append(TP)
             FP_table.append(FP)
@@ -356,6 +355,8 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
         print('Small/All tumors: {}/{}'.format(true_small_num, true_num))
 
     data = np.array(PERF_per_thre)
+    max_sens_iou = PERF_per_thre[0][2]
+    max_sens_dist = PERF_per_thre[0][5]
     if (0):
         data_s = np.array(PERF_per_thre_s)
     plt.figure()
@@ -406,9 +407,13 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
     # plt.grid(b=True, which='major', axis='x')
     plt.ylabel('Sensitivity')
     plt.xlabel('False Positive Per Pass')
-    return area_dist, area_iou, plt, log_txt, cpm_dist, cpm
+    if return_fp_bboxes:
+        plt.close()
+        return area_dist, area_iou, plt, log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, fp_bboxes_all_pid
+    else:
+        return area_dist, area_iou, plt, log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou
 
-def calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, ori_dataset, size_threshold=0, th_step=0.05):
+def calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, ori_dataset, size_threshold=0, th_step=0.05, det_tp_iou_thresh=cfg.VAL["TP_IOU_THRESH"]):
     #size_threshold is 20 in thesis
     num_npy = os.listdir(npy_dir) # dir is your directory path
     total_pass = len(num_npy)
@@ -504,7 +509,7 @@ def calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, ori_dataset,
 
             
             if (1):
-                TP, FP, FN, hits_index, hits_iou, hits_score = eval_precision_recall(out_boxes, true_box, det_thresh=cfg.VAL["TP_IOU_THRESH"], scale=scale) #det_thresh == IOU thresh
+                TP, FP, FN, hits_index, hits_iou, hits_score = eval_precision_recall(out_boxes, true_box, det_thresh=det_tp_iou_thresh, scale=scale) #det_thresh == IOU thresh
                 #print(f"TP:{TP}, FP:{FP}, FN:{FN}, hits_index:{hits_index}, hits_iou:{hits_iou}, hits_score:{hits_score}")
             if (1): # using luna or other distance criteria
                 TP_dist, FP_dist, FN_dist, hits_index_dist, hits_dist, hits_score_dist, TP_by_size = eval_precision_recall_by_dist(out_boxes, true_box, dist_thresh=None, scale=scale, spacing=cfg.VAL["RANDOM_CROPPED_VOI_FIX_SPACING"])
@@ -564,6 +569,8 @@ def calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, ori_dataset,
     log_txt += txt + "\n"
 
     data = np.array(PERF_per_thre)
+    max_sens_iou = PERF_per_thre[0][2]
+    max_sens_dist = PERF_per_thre[0][5]
 
     plt.figure()
     plt.rc('font',family='Times New Roman', weight='bold')
@@ -601,7 +608,7 @@ def calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, ori_dataset,
     # plt.grid(b=True, which='major', axis='x')
     plt.ylabel('Sensitivity')
     plt.xlabel('False Positive Per Pass')
-    return area_dist, area_iou, plt, log_txt, cpm, cpm_dist
+    return area_dist, area_iou, plt, log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou
 
 def _parse_args():
     parser = argparse.ArgumentParser()

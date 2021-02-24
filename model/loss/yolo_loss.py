@@ -11,7 +11,7 @@ class FocalLoss(nn.Module):
         super(FocalLoss, self).__init__()
         self.__gamma = gamma
         self.__alpha = alpha
-        self.__loss = nn.BCEWithLogitsLoss(reduction=reduction)
+        self.__loss = nn.BCEWithLogitsLoss(reduction=reduction)  ## it calc loss based on "p", not "p_d", so it does need extra sigmoid
 
     def forward(self, input, target):
         loss = self.__loss(input=input, target=target)
@@ -132,10 +132,29 @@ class YoloV4Loss(nn.Module):
             iou = tools.IOU_xywh_torch(p_d_xywh.unsqueeze(4), bboxes.unsqueeze(1).unsqueeze(1).unsqueeze(1).unsqueeze(1))
         #t = torch.Tensor([[[0, 1], [2, 3]], [[4, 5], [6, 7]]])
         iou_max = iou.max(-1, keepdim=True)[0]
-        label_noobj_mask = (1.0 - label_obj_mask) * (iou_max < self.__iou_threshold_loss).float()
 
-        loss_conf = (label_obj_mask * FOCAL(input=p_conf, target=label_obj_mask) +
+        if (0): #original (get 0.9 sens, but FP too high)
+            """
+            ##PSEUDO
+            if max(pred_iou) < self.__iou_threshold_loss:
+                calc loss using all bboxes' p_conf
+            else:
+                calc loss using p_conf of bboxes with label_conf==1
+            """
+            label_noobj_mask = (1.0 - label_obj_mask) * (iou_max < self.__iou_threshold_loss).float()
+            loss_conf = (label_obj_mask * FOCAL(input=p_conf, target=label_obj_mask) +
                     label_noobj_mask * FOCAL(input=p_conf, target=label_obj_mask)) * label_mix
+        else: # try do fp reduction, bbox with label=0 now has gradient!
+            """
+            ##PSEUDO
+            calc loss using (p_conf of bboxes with label_conf==1) AND (1-p_conf of bboxes with label_conf==0) 
+            """
+            label_noobj_mask = (1.0 - label_obj_mask)
+            loss_conf = (label_obj_mask * FOCAL(input=p_conf, target=label_obj_mask) +
+                    label_noobj_mask * FOCAL(input = 1-p_conf, target=label_noobj_mask)) * label_mix
+
+
+        
 
 
         # loss classes

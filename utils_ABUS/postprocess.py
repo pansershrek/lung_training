@@ -56,7 +56,7 @@ def compute_iou(box1, box2, scale): #box: zyxzyx, scale:zyx
     return iou
 
 
-def eval_precision_recall(pred_BB, true_BB, det_thresh, scale):
+def eval_precision_recall(pred_BB, true_BB, det_thresh, scale, return_fp_bboxes=False):
     '''
         by Eason Ho
     '''
@@ -79,7 +79,13 @@ def eval_precision_recall(pred_BB, true_BB, det_thresh, scale):
     TP = gt_hits.sum()
     FP = len(pred_hits) - pred_hits.sum()
     FN = len(true_BB)-gt_hits.sum()
-    return int(TP),int(FP),int(FN),hits_index,hits_iou,hits_score
+    fp_idx = (1-pred_hits).astype(np.bool)
+    fp_bboxes = np.array(pred_BB)[fp_idx]
+    if return_fp_bboxes:
+        return int(TP), int(FP), int(FN), hits_index, hits_iou, hits_score, fp_bboxes
+    else:
+        return int(TP), int(FP), int(FN), hits_index, hits_iou, hits_score
+    
 
 # scale = (640/line[1], 160/line[2], 640/line[3])
 def centroid_distance(box1, box2, scale, spacing):
@@ -108,7 +114,7 @@ def centroid_distance(box1, box2, scale, spacing):
     return dist
 
 
-def eval_precision_recall_by_dist(pred_BB, true_BB, dist_thresh, scale, spacing):
+def eval_precision_recall_by_dist(pred_BB, true_BB, dist_thresh, scale, spacing, return_fp_bboxes=False):
     """
     dist thresh: int or None; if is None, dist_thresh = "1/2 diameter(longest axis) of GT nodule" according to LUNA challenge
     scale: an array/list of form [z,y,x]; a ratio of "the input/decoded img size" to "the img size of GT box"
@@ -144,7 +150,12 @@ def eval_precision_recall_by_dist(pred_BB, true_BB, dist_thresh, scale, spacing)
     TP = gt_hits.sum()
     FP = len(pred_hits) - pred_hits.sum()
     FN = len(true_BB)-gt_hits.sum()
-    return int(TP), int(FP), int(FN), hits_index, hits_dist, hits_score, TP_by_size
+    fp_idx = (1-pred_hits).astype(np.bool)
+    fp_bboxes = np.array(pred_BB)[fp_idx]
+    if return_fp_bboxes:
+        return int(TP), int(FP), int(FN), hits_index, hits_dist, hits_score, TP_by_size, fp_bboxes
+    else:
+        return int(TP), int(FP), int(FN), hits_index, hits_dist, hits_score, TP_by_size
 
 def box_to_string(bbox):
     separator = ','

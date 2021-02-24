@@ -19,6 +19,7 @@ from torch.utils.tensorboard import SummaryWriter
 import config.yolov4_config as cfg
 from utils import cosine_lr_scheduler
 from utils.log import Logger
+import numpy as np
 
 #from eval_coco import *
 #from eval.cocoapi_evaluator import COCOAPIEvaluator
@@ -54,14 +55,20 @@ if __name__ == "__main__":
         #('train_rc_1_f3', 3),
         #('train_rc_1_f4', 4),
         #('train_rc_config_2_biggercrop_f0', 0),
-        ('train_rc_config_1_f0', 0),
+        ('train_rc_config_3_f0', 0),
+        #('train_rc_config_1_f1', 1),
+        #('train_rc_config_1_f2', 2),
+        #('train_rc_config_1_f3', 3),
+        #('train_rc_config_1_f4', 4),
 
         ]:
+
+        eval_conf_thresh = [0.015]  ## original: 0.015
         for testing_mode in [0]: #[0, 1]:
             #if testing_mode==0 and exp_name=='Fd0_BS2_Stem4_8_128_r2':
             #    continue
             opt.exp_name = exp_name
-            opt.exp_name = exp_name + "_lung_voi"
+            #opt.exp_name = exp_name + "_lung_voi"
             #opt.exp_name = exp_name
             logger = Logger(log_file_name=opt.log_path + '/log.txt', log_level=logging.DEBUG, logger_name='YOLOv4').get_log()
             checkpoint_root = 'checkpoint/' #'/home/lab402/p08922003/YOLOv4-pytorch/checkpoint/'
@@ -70,47 +77,51 @@ if __name__ == "__main__":
 
             phase = 'VAL'if testing_mode==0 else 'TEST' if testing_mode==1 else 'TRAIN_debug'
             writer = SummaryWriter(log_dir=opt.log_path + '/{}_'.format(phase) + opt.exp_name)
+            eval_conf_thresh_list = eval_conf_thresh if hasattr(eval_conf_thresh, "__iter__") else [eval_conf_thresh]
+            for eval_conf_thresh in eval_conf_thresh_list:
+                for epoch in [323]: #range(204, 306, 17):#list(range(45, 65+1, 10))+[120]: #[255,425,646]: #range(255, 425+1, 17):
+                    weight_path = '{}/backup_epoch{}.pt'.format(checkpoint_folder, str(epoch))
+                    if os.path.exists(weight_path):
+                        opt.weight_path = weight_path
+                        exp_name_folder = opt.exp_name
+                        if testing_mode==1:
+                            exp_name_folder = opt.exp_name + '_testing'
+                        elif testing_mode==-1:
+                            exp_name_folder = opt.exp_name + '_train_debug'
+                        checkpoint_save_dir = 'preidction/{}/{}_conf{}'.format(exp_name_folder, str(epoch), eval_conf_thresh)
+                        if not os.path.exists('preidction'):
+                            os.mkdir('preidction')
 
-            for epoch in [425]: #range(425, 511, 17):#list(range(45, 65+1, 10))+[120]: #[255,425,646]: #range(255, 425+1, 17):
-                weight_path = '{}/backup_epoch{}.pt'.format(checkpoint_folder, str(epoch))
-                if os.path.exists(weight_path):
-                    opt.weight_path = weight_path
-                    exp_name_folder = opt.exp_name
-                    if testing_mode==1:
-                        exp_name_folder = opt.exp_name + '_testing'
-                    elif testing_mode==-1:
-                        exp_name_folder = opt.exp_name + '_train_debug'
-                    checkpoint_save_dir = 'preidction/{}/{}'.format(exp_name_folder, str(epoch))
-                    if not os.path.exists('preidction'):
-                        os.mkdir('preidction')
+                        if not os.path.exists('preidction/{}'.format(exp_name_folder)):
+                            os.mkdir('preidction/{}'.format(exp_name_folder))
 
-                    if not os.path.exists('preidction/{}'.format(exp_name_folder)):
-                        os.mkdir('preidction/{}'.format(exp_name_folder))
+                        if not os.path.exists(checkpoint_save_dir):
+                            os.mkdir(checkpoint_save_dir)
 
-                    if not os.path.exists(checkpoint_save_dir):
-                        os.mkdir(checkpoint_save_dir)
+                        weight_path = opt.weight_path
+                        #weight_path = 'checkpoint/96_B4_F1/backup_epoch150.pt'
+                        trainer = Trainer(testing_mode=testing_mode,
+                                weight_path=weight_path,
+                                checkpoint_save_dir=checkpoint_save_dir,
+                                resume=False,
+                                gpu_id=opt.gpu_id,
+                                accumulate=1,
+                                fp_16=opt.fp_16,
+                                writer=None,
+                                logger=logger,
+                                crx_fold_num=fold_num,
+                                dataset_name=opt.dataset_name,
+                                eval_interval=None,
+                                npy_name=opt.npy_name,
+                                eval_conf_thresh=eval_conf_thresh,
+                                )
 
-                    weight_path = opt.weight_path
-                    #weight_path = 'checkpoint/96_B4_F1/backup_epoch150.pt'
-                    trainer = Trainer(testing_mode=testing_mode,
-                            weight_path=weight_path,
-                            checkpoint_save_dir=checkpoint_save_dir,
-                            resume=False,
-                            gpu_id=opt.gpu_id,
-                            accumulate=1,
-                            fp_16=opt.fp_16,
-                            writer=None,
-                            logger=logger,
-                            crx_fold_num=fold_num,
-                            dataset_name=opt.dataset_name,
-                            eval_interval=None,
-                            npy_name=opt.npy_name,
-                            )
-
-                    area_dist, area_iou, plt, _, cpm_dist, cpm = trainer.evaluate()
-                    writer.add_scalar('AUC (IOU)', area_iou, epoch)
-                    writer.add_scalar('CPM (IOU)', cpm, epoch)
-                    writer.add_scalar('AUC (dist)', area_dist, epoch)
-                    writer.add_scalar('CPM (dist)', cpm_dist, epoch)
+                        area_dist, area_iou, plt, _, cpm_dist, cpm, max_sens_dist, max_sens_iou = trainer.evaluate()
+                        writer.add_scalar('AUC (IOU)', area_iou, epoch)
+                        writer.add_scalar('CPM (IOU)', cpm, epoch)
+                        writer.add_scalar('AUC (dist)', area_dist, epoch)
+                        writer.add_scalar('CPM (dist)', cpm_dist, epoch)
+                        writer.add_scalar('Max sens(iou)', max_sens_iou, epoch)
+                        writer.add_scalar('Max sens(dist)', max_sens_dist, epoch)
 
 

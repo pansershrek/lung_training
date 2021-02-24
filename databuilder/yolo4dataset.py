@@ -166,7 +166,10 @@ class YOLO4_3DDataset(Dataset):
         #print("img:", img.shape, img.dtype, type(img))
         #print("label_mbbox:", label_mbbox.shape, label_mbbox.dtype, type(label_mbbox))
         #print("mbboxes:", mbboxes.shape, mbboxes.dtype, type(mbboxes))
-        output =  img, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name, shape_before_pad, valid_bboxes
+        if self.batch_1_eval:
+            output =  img, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name, shape_before_pad, valid_bboxes
+        else:
+            output =  img, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name, shape_before_pad, []
         #print("At yolo4dataset.py")
         #print("label_sbbox", label_sbbox.shape)
         #print("label_mbbox", label_mbbox.shape)

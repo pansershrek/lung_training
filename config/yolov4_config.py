@@ -116,19 +116,19 @@ TRAIN = {
          "TRAIN_IMG_SIZE": (128,128,128), #(128, 128, 128), (128,256,256)
          #"AUGMENT": True,
          #for 640
-         "BATCH_SIZE": 8,
+         "BATCH_SIZE": 8, # *8
          #for 96
          #"BATCH_SIZE": 4,
          "MULTI_SCALE_TRAIN": False,
          "IOU_THRESHOLD_LOSS": 0.5, # *0.5, 0.02
          #for 640
-         "YOLO_EPOCHS": 800, #8: 425, 500, 800
+         "YOLO_EPOCHS": 400, #8: 425, 500, 800
          #for 96
          #"YOLO_EPOCHS": 100,
          #"Mobilenet_YOLO_EPOCHS": 120,
          "OPTIMIZER": "SGD", 
          "USE_SGD_BEFORE_LOSS_LOWER_THAN_5": False,
-         "NUMBER_WORKERS": 6,
+         "NUMBER_WORKERS": 6,  # *6
          "MOMENTUM": 0.9,
          "WEIGHT_DECAY": 0.0001, # *0.0005
          "LR_INIT": 5e-5 , #SGD: 1e-4, *5e-5, 5e-6               #ADAM:
@@ -140,6 +140,12 @@ TRAIN = {
          "RANDOM_CROP_FILE_PREFIX": "random_crop_128x128x128_1.25x0.75x0.75",
          "RANDOM_CROP_SPACING": (1.25, 0.75, 0.75), #used in dataset.__getitem__ 
          "RANDOM_CROP_NCOPY": 20,
+
+         "DO_FP_REDUCTION": True,
+         "FP_REDUCTION_TARGET_DATASET": "training", #WIP
+         "FP_REDUCTION_START_EPOCH": 300,
+         "FP_REDUCTION_INTERVAL": 3, 
+         "FP_REDUCTION_MODE": "0,1", # 0,0 | 0,1 | 1,0 (conf, cls_index)
          #for 96
          #"WARMUP_EPOCHS": 10 #40  # or None
          }
@@ -164,7 +170,7 @@ VAL = {
         "BATCH_1_EVAL": True, # T/F
         "RANDOM_CROPPED_VOI_FIX_SPACING": (1.25,0.75,0.75), #(z,y,x)
         "TEST_LUNG_VOI": True, # T/F, whether to use lung voi only during testing 
-        "TEST_LUNG_VOI_IGNORE_INVALID_VOI": True, # T/F, whether to ignore pid listed in ${MASK_SAVED_PATH}/error.txt automatocaly
+        "TEST_LUNG_VOI_IGNORE_INVALID_VOI": False, # T/F, whether to ignore pid listed in ${MASK_SAVED_PATH}/error.txt automatocaly
         #"MULTI_SCALE_VAL": True,
         #"FLIP_VAL": True,
         #"Visual": True
@@ -210,3 +216,11 @@ def _check():
                 assert VAL["USING_RANDOM_CROP_EVAL"] == False
 
 _check()
+
+"""
+UPDATE_NOTE:
+1. WIP: add gradient for bbox with label=0 (change loss_conf in yolo_loss.py)
+
+WHAT'S NEW:
+** 
+"""

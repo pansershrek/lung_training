@@ -37,8 +37,8 @@ def load_npy_gz(fpath):
         arr = np.load(f)
     return arr"""
 
-def get_lung_part(img, debug_view=False):
-    """get lung part bbox from img"""
+def get_lung_part(img, gt_bboxes, debug_view=False):
+    """get lung part bbox from img, gt_bboxes are used to check VOI validity only"""
 
     ## (1) binarize with threshold
     binarized = binarize(img, thre=0) 
@@ -65,10 +65,20 @@ def get_lung_part(img, debug_view=False):
     #two_lobes_mask = (labels_out!=descending_label[0])
     bbox = get_bbox(two_lobes_mask)
 
-    ## (5) use erosion to eliminate artifacts
-    #kernel = np.ones((10,10,10)).astype(np.bool)
-    #eroded2 = morphology.binary_erosion(two_lobes_mask.astype(np.bool), kernel)
-    #bbox = get_bbox(eroded2.astype(np.uint8))
+    ## (5) if VOI is invalid, use larget white part rather than 2nd+3rd largest black part
+    if not check_voi(bbox, gt_bboxes, img.shape):
+        print("Try brightest VOI")
+        connectivity = 6 # 26, 18, 6 for 3D
+        labels_out, N = cc3d.connected_components(eroded, connectivity=connectivity, return_N=True)
+        label_ranker = {}
+        for label, image in cc3d.each(labels_out, binary=True, in_place=True):
+            s = image.sum()
+            label_ranker[label] = s
+            if label > 10 :
+                break
+        descending_label = sorted(label_ranker, key=label_ranker.__getitem__, reverse=True)
+        bright_part_mask = labels_out==descending_label[0]
+        bbox = get_bbox(bright_part_mask)
 
     if debug_view:
         AnimationViewer(img, note="Original")
@@ -83,6 +93,9 @@ def get_lung_part(img, debug_view=False):
         #print("bbox:", bbox)
         AnimationViewer(img, bbox=[bbox])
     return bbox, two_lobes_mask
+
+
+
     
 def check_voi(voi, bboxes, shape):
     """check if the voi is reasonable"""
@@ -97,9 +110,16 @@ def check_voi(voi, bboxes, shape):
             return False
     return True
 
-def dataset_preprocessing(save=False, mask_name="mask.npy"):
+def dataset_preprocessing(save=False, mask_name="mask.npy", debug_view=False, bypass_pids=()):
     dataset = LungDataset.load(CURRENT_DATASET_PKL_PATH)
-    dataset.get_data(dataset.pids)
+    if (1): # process error_pid only
+        fname = pjoin(MASK_SAVED_PATH, "error_pid.txt")
+        with open(fname, "r") as f:
+            err_pids = f.read()[1:-1].split(",\n")
+        dataset.get_data(err_pids)
+        dataset.get_data(["10378435"])
+    else:
+        dataset.get_data(dataset.pids)
     ##dataset.data = dataset.data[:10]
     errors = []
     vois = {}
@@ -108,11 +128,14 @@ def dataset_preprocessing(save=False, mask_name="mask.npy"):
     assert mask_name.endswith(".npy")
     for img, bboxes, pid in tqdm(dataset):
         img = img.squeeze(-1).numpy()
-        lung_voi, two_lobes_mask = get_lung_part(img)
+        lung_voi, two_lobes_mask = get_lung_part(img, bboxes, debug_view=debug_view)
         z1, y1, x1, z2, y2, x2 = lung_voi
-        if not check_voi(lung_voi, bboxes, img.shape):
-            warnings.warn(f"pid: {pid} failed check_voi")
-            errors.append(pid)
+        if pid not in bypass_pids:
+            if not check_voi(lung_voi, bboxes, img.shape):
+                warnings.warn(f"pid: {pid} failed check_voi")
+                errors.append(pid)
+        else:
+            warnings.warn(f"pid: {pid} bypass...")
         lung_voi_shape = (z2-z1, y2-y1, x2-x1)
         #AnimationViewer(img, bbox=[lung_voi])
         #print("pid", pid, img.shape)
@@ -126,7 +149,7 @@ def dataset_preprocessing(save=False, mask_name="mask.npy"):
             #save_npy_gz(fname, two_lobes_mask)
  
     if save:
-        fname = pjoin(MASK_SAVED_PATH, "VOI.txt")
+        fname = pjoin(MASK_SAVED_PATH, "VOI_v3.txt")
         out_txt = ""
         for pid in vois:
             out_txt += "{} {}\n".format(pid, vois[pid])
@@ -135,7 +158,7 @@ def dataset_preprocessing(save=False, mask_name="mask.npy"):
             f.write(out_txt)
         
         err_txt = "[" + ",\n".join(errors) + "]"
-        fname = pjoin(MASK_SAVED_PATH, "error_pid.txt")
+        fname = pjoin(MASK_SAVED_PATH, "error_pid_v3.txt")
         with open(fname, "w") as f:
             f.write(err_txt)
         
@@ -161,6 +184,7 @@ def _test():
         print("voi shape:", lung_shape)
 
 if __name__ == "__main__":
-    dataset_preprocessing(save=True, mask_name="mask_v1.npy")
+    bypass_pids = ("10378435",)
+    dataset_preprocessing(save=True, mask_name="mask_v2.npy", debug_view=False, bypass_pids=bypass_pids)
     #_test()
 

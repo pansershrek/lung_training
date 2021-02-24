@@ -20,6 +20,8 @@ from utils.log import Logger
 import shutil
 import os
 from os.path import join as pjoin
+import random_crop
+from utils_hsz import AnimationViewer
 
 #from eval_coco import *
 #from eval.cocoapi_evaluator import COCOAPIEvaluator
@@ -33,11 +35,12 @@ from global_variable import USE_LUNA, MASK_SAVED_PATH
 
 class Trainer(object):
     def __init__(self, testing_mode, weight_path, checkpoint_save_dir, resume, gpu_id, accumulate, fp_16, writer, logger, crx_fold_num,
-                dataset_name, eval_interval, npy_name):
+                dataset_name, eval_interval, npy_name, det_tp_iou_thresh=None, eval_conf_thresh=None):
         #self.data_root = 'datasets/abus'
         #init_seeds(0)
         self.lung_dataset_name = dataset_name
         self.device = gpu.select_device(gpu_id)
+        #self.device = torch.device("cpu")
         self.start_epoch = 0
         self.best_cpm = 0.
         self.accumulate = accumulate
@@ -61,6 +64,21 @@ class Trainer(object):
         self.may_change_optimizer = False
         self.test_lung_voi = cfg.VAL["TEST_LUNG_VOI"]
         self.test_lung_voi_ignore_invalid_voi = cfg.VAL["TEST_LUNG_VOI_IGNORE_INVALID_VOI"]
+        self.det_tp_iou_thresh = cfg.VAL["TP_IOU_THRESH"] if det_tp_iou_thresh==None else det_tp_iou_thresh
+        self.eval_conf_thresh = cfg.VAL["CONF_THRESH"] if eval_conf_thresh==None else eval_conf_thresh
+
+        self.do_fp_reduction = cfg.TRAIN["DO_FP_REDUCTION"]
+        self.fp_reduction_target = cfg.TRAIN["FP_REDUCTION_TARGET_DATASET"] 
+        self.fp_reduction_start_epoch = cfg.TRAIN["FP_REDUCTION_START_EPOCH"]
+        self.fp_reduction_interval = cfg.TRAIN["FP_REDUCTION_INTERVAL"]
+        if self.do_fp_reduction:
+            assert not self.eval_random_crop, "FP_REDUCTION CAN ONLY BE DONE WHEN USING THE WHOLE IMAGE AS EVAL DATA!"
+            assert self.testing_mode != 1 ## only debug/train/validation allowed
+            assert self.fp_reduction_target.lower() in ["training", "testing"]
+            self.empty_dataset = LungDataset.load(dataset_name) # empty means "didn't get_data"
+            assert self.fp_reduction_interval > 0
+        
+        
 
         
         #train_dataset = ABUSDetectionDataset(testing_mode, augmentation=True, crx_fold_num= crx_fold_num, crx_partition= 'train', crx_valid=True, include_fp=False, root=self.data_root,
@@ -117,6 +135,7 @@ class Trainer(object):
                 err_file = pjoin(MASK_SAVED_PATH, "error_pid.txt")
                 with open(err_file, "r") as f:
                     err_pids = f.read()[1:-1].split(",\n")
+                self.err_pids = err_pids
                 trimmed_data = []
                 for i in range(len(test_dataset.data)): 
                     datum = test_dataset.data[i]
@@ -124,8 +143,20 @@ class Trainer(object):
                     if pid not in err_pids:
                         trimmed_data.append(datum)
                 test_dataset.data = trimmed_data
-
-
+        
+        """if self.do_fp_reduction: # run "evaluate" on this set to get "fp_bboxes"
+            fp_reduction_dataset = train_dataset if self.fp_reduction_target.lower()=="training" else test_dataset
+            for i in range(len(fp_reduction_dataset.data)): 
+                _, bboxs_ori, pid = fp_reduction_dataset.data[i]
+                datum = (None, bboxs_ori, pid) # force load original img
+                fp_reduction_dataset.data[i] = datum
+            fp_reduction_dataset.set_batch_1_eval(True, cfg.VAL["RANDOM_CROPPED_VOI_FIX_SPACING"])
+            self.fp_reduction_dataset = YOLO4_3DDataset(fp_reduction_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False)
+            self.fp_reduction_dataloader =  DataLoader(self.fp_reduction_dataset,
+                                           batch_size=1000, # as big as possible is okay
+                                           num_workers=0,
+                                           shuffle=False, pin_memory=False
+                                           )"""
 
 
 
@@ -237,12 +268,24 @@ class Trainer(object):
             mloss = torch.zeros(5)
             logger.info("===Epoch:[{}/{}]===".format(epoch, self.epochs))
             n_batch = len(self.train_dataloader)
-            for i, (imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, valid_bboxes)  in tqdm(enumerate(self.train_dataloader), total=n_batch):
+
+            do_fp_reduction_this_epoch = (self.do_fp_reduction) and (epoch>=self.fp_reduction_start_epoch) and (epoch%self.fp_reduction_interval==0)
+            
+            for i, batched_data in tqdm(enumerate(self.train_dataloader), total=n_batch):
+                imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, _ = batched_data
+                
                 if (0): # if you had processed batch without dataloader, and use dataloader with B=1
                     imgs = imgs[0]
                     label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = \
                         label_sbbox[0], label_mbbox[0], label_lbbox[0], sbboxes[0], mbboxes[0], lbboxes[0]
                     img_names = [_[0] for _ in img_names]
+
+                if do_fp_reduction_this_epoch: # fp reduction
+                    fp_data = self.get_fp_for_reduction(img_names)
+                    cat = lambda t1,t2: torch.cat([t1,t2], dim=0) if type(t1)==torch.Tensor==type(t2) else t1+t2
+                    merged_data = [cat(t1,t2) for t1,t2 in zip(batched_data, fp_data)]
+                    imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, _ = merged_data
+                    self.model.train() # turn from evaluating back to training
                 self.scheduler.step(len(self.train_dataloader)*epoch + i)
                 imgs = imgs.to(self.device)
                 label_sbbox = label_sbbox.to(self.device)
@@ -314,9 +357,10 @@ class Trainer(object):
                 if self.multi_scale_train and (i+1) % 10 == 0:
                     self.train_dataset.img_size = random.choice(range(10, 20)) * 32
 
-            if (epoch % self.eval_interval==0) or (epoch == self.epochs): #tag:Val #20
+            if (epoch % self.eval_interval==0) or (epoch == self.epochs) or (do_fp_reduction_this_epoch): #tag:Val #20
                 if cfg.TRAIN["DATA_TYPE"] == 'VOC' or cfg.TRAIN["DATA_TYPE"] == 'ABUS' or cfg.TRAIN["DATA_TYPE"] == 'LUNG':
-                    area_dist, area_iou, plt, pr999_p_conf, cpm_dist, cpm = self.evaluate()
+                    area_dist, area_iou, plt, pr999_p_conf, cpm_dist, cpm, max_sens_dist, max_sens_iou, bboxes_pred = self.evaluate(return_box=True)
+                    ##TODO: add fp reduction by throwing fp back!
                     logger.info("===== Validate =====".format(epoch, self.epochs))
                     if writer:
                         writer.add_scalar('AUC (IOU)', area_iou, epoch)
@@ -324,6 +368,8 @@ class Trainer(object):
                         writer.add_scalar('CPM (IOU)', cpm, epoch)
                         writer.add_scalar('AUC (dist)', area_dist, epoch)
                         writer.add_scalar('CPM (dist)', cpm_dist, epoch)
+                        writer.add_scalar('Max sens(iou)', max_sens_iou, epoch)
+                        writer.add_scalar('Max sens(dist)', max_sens_dist, epoch)
                     save_per_epoch = 1
                     if epoch % save_per_epoch==0:
                         self.__save_model_weights(epoch, area_iou)
@@ -334,7 +380,7 @@ class Trainer(object):
             logger.info("  ===cost time:{:.4f}s".format(end - start))
         logger.info("=====Training Finished.   best_test_CPM:{:.3f}%====".format(self.best_cpm))
 
-    def evaluate(self):
+    def evaluate(self, return_box=False):
         logger = self.logger
         logger.info("Evaluate start,img size is: {},batchsize is: {:d},work number is {:d}".format(cfg.VAL["TEST_IMG_SIZE"], cfg.VAL["BATCH_SIZE"], cfg.VAL["NUMBER_WORKERS"]))
         logger.info("Test datasets number is : {}".format(len(self.test_dataloader)))
@@ -345,7 +391,7 @@ class Trainer(object):
         self.model.eval()
         mloss = []
         pred_result_path=os.path.join(self.checkpoint_save_dir, 'evaluate')
-        self.evaluator = Evaluator(self.model, showatt=False, pred_result_path=pred_result_path, box_top_k=cfg.VAL["BOX_TOP_K"])
+        self.evaluator = Evaluator(self.model, showatt=False, pred_result_path=pred_result_path, box_top_k=cfg.VAL["BOX_TOP_K"], conf_thresh=self.eval_conf_thresh)
         self.evaluator.clear_predict_file()
         TOP_K = 50
         with torch.no_grad():
@@ -420,6 +466,7 @@ class Trainer(object):
                     #    bboxes_prd[:, :6] = (bboxes_prd[:, :6] / img.size(1)) * cfg.VAL['TEST_IMG_BBOX_ORIGINAL_SIZE'][0]
                     self.evaluator.store_bbox(img_name, bboxes_prd)
             log_txt = ""
+            log_txt += f"Using eval_conf_thresh: {self.eval_conf_thresh}\n"
             if 1: #for 640
                 npy_format = npy_dir + '/{}_test.npy'
                 n_batch = len(self.test_dataloader)
@@ -454,9 +501,12 @@ class Trainer(object):
             print(txt)
             annotation_file = "annotation_luna.txt" if USE_LUNA else "annotation_chung.txt"
             if self.eval_random_crop:
-                area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm = calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, size_threshold=20, th_step=0.01, ori_dataset=self.test_dataset.ori_dataset)
+                area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou = calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, size_threshold=20, th_step=0.01, ori_dataset=self.test_dataset.ori_dataset, det_tp_iou_thresh=self.det_tp_iou_thresh)
             else:
-                area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01)
+                if self.do_fp_reduction:
+                    area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, fp_bboxes_all_pid = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=True)
+                else:
+                    area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=False)
             log_txt += txt + "\n" + sub_log_txt
             plt.savefig(os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
             if hasattr(self, "current_epoch"): # from train3D.py
@@ -469,8 +519,152 @@ class Trainer(object):
 
         end = time.time()
         logger.info("  ===cost time:{:.4f}s".format(end - start))
-        return area_dist, area_iou, plt, np.percentile(mloss, 50), cpm_dist, cpm
+        if return_box:
+            return area_dist, area_iou, plt, np.percentile(mloss, 50), cpm_dist, cpm, max_sens_dist, max_sens_iou, bboxes_prd
+        else:
+            return area_dist, area_iou, plt, np.percentile(mloss, 50), cpm_dist, cpm, max_sens_dist, max_sens_iou
 
     def evaluate_and_logTB(self):
         writer = self.writer
         logger = self.logger
+
+    def get_fp_for_reduction(self, img_names):
+        """
+        fp_bboxes_all_pid: a dictionary, key=pid, value=fp_bboxes
+        fp_bboxes: shape (X, 8), where 8 = pred_coor(6) + pred_conf(1) + pred_class_idx(1) [X differs due to postprocessing]
+
+        """
+        ### IDEAS
+        ## Using eval crop (fp) into training?? (WIP)
+        ## Using random cropped blank area??
+        ## Using other idea?? (GAN?)
+
+        npy_dir = "fp_reduction_tmp"
+        fp_dataset = self.empty_dataset
+        if self.test_lung_voi:
+            fp_dataset.set_lung_voi(True)
+            if self.test_lung_voi_ignore_invalid_voi:
+                trimmed_names = []
+                for pid in img_names:
+                    if pid not in self.err_pids:
+                        trimmed_names.append(pid)
+                fp_dataset.get_data(trimmed_names)
+            else:
+                fp_dataset.get_data(img_names)
+
+        fp_dataset.set_batch_1_eval(True, cfg.VAL["RANDOM_CROPPED_VOI_FIX_SPACING"])
+        fp_dataset = YOLO4_3DDataset(fp_dataset, classes=[0,1], batch_1_eval=True)
+        fp_dataloader = DataLoader(fp_dataset, batch_size=1, num_workers=cfg.VAL["NUMBER_WORKERS"], pin_memory=False)
+        fp_evaluator = Evaluator(self.model, showatt=False, pred_result_path=npy_dir, box_top_k=cfg.VAL["BOX_TOP_K"], conf_thresh=self.eval_conf_thresh)
+        fp_evaluator.clear_predict_file()
+
+        log_txt = "Enter FP reduction!!\n"
+        # (1) run evaluation on 1 batch of samples to generate fp_bboxes
+        with torch.no_grad():
+            start_time=time.time()
+            if 1: 
+                npy_format = npy_dir + '/{}_test.npy'
+                n_batch = len(fp_dataloader)
+                gt_lut = {}
+                for i, (imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, valid_bboxes)  in tqdm(enumerate(fp_dataloader), total=n_batch, desc="fp getting"):
+                    imgs = imgs.to(self.device)
+                    for img, img_name, shape_before_pad, valid_bbox in zip(imgs, img_names, shapes_before_pad, valid_bboxes):
+                        
+                        #print("(FP reduction) Current img:", img_name)
+                        bboxes_prd, box_raw_data, sub_log_txt = fp_evaluator.get_bbox(img, multi_test=False, flip_test=False, shape_before_pad=shape_before_pad)
+                        log_txt += sub_log_txt
+                        fp_evaluator.store_bbox(img_name+"_test", bboxes_prd)
+                        valid_bbox = valid_bbox.cpu().tolist()
+                        gt_lut[img_name] = valid_bbox
+            
+            #txt = "Average time cost: {:.2f} sec.".format((time.time() - start_time)/len(self.test_dataloader))
+            #print(txt)
+            #annotation_file = "annotation_luna.txt" if USE_LUNA else "annotation_chung.txt"
+            area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, fp_bboxes_all_pid = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=True)
+            log_txt += sub_log_txt
+            #plt.savefig(os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
+            #if hasattr(self, "current_epoch"): # from train3D.py
+            #    out_log_name = os.path.join(self.checkpoint_save_dir, 'evaluate_log_e{}.txt'.format(self.current_epoch))
+            #else: # from draw_froc.py
+            #    out_log_name = os.path.join(self.checkpoint_save_dir, 'evaluate_log.txt')
+            #with open(out_log_name, "w") as f:
+            #    f.write(log_txt)
+            #print("SAVE IMG TO", os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
+            end = time.time()
+            #logger.info("  ===cost time:{:.4f}s".format(end - start))
+
+        # (2) crop and make label of those fp bboxes
+        n_batch = len(fp_dataloader)
+        cropped_imgs = []
+        cropped_boxes = []
+        cropped_names = []
+        for i, (imgs, _, _, _, _, _, _, img_names, shapes_before_pad, valid_bboxes)  in tqdm(enumerate(fp_dataloader), total=n_batch, desc="fp cropping"):
+            for img, img_name, shape_before_pad, valid_bbox in zip(imgs, img_names, shapes_before_pad, valid_bboxes):
+                k = 5 # top k fp to **choose** in "random_crop_3D"
+                img = img.squeeze_(-1).to(self.device)
+                fp_bboxes = fp_bboxes_all_pid[img_name] # shape (?, 8)
+                top_k_hard_fp_idx = fp_bboxes[:, 6].argsort()[-k:][::-1]
+                top_k_hard_fp = fp_bboxes[top_k_hard_fp_idx] # shape (k, 8)
+                to_crop_fp = torch.tensor(top_k_hard_fp[:,:6], device=self.device, dtype=torch.float32)
+                if len(to_crop_fp)==0: #no fp
+                    continue
+                try:
+                    cropped_img, cropped_box = random_crop.random_crop_3D(img, to_crop_fp, cfg.TRAIN["TRAIN_IMG_SIZE"], cfg.TRAIN["TRAIN_IMG_SIZE"])
+                except Exception as e:
+                    print("Encounter error in random crop: {}".format(e.__repr__()))
+                    continue         
+                cropped_img, cropped_box = cropped_img[0], cropped_box[0] # only remove list, shape (C, new_d, new_h, new_w)
+                if (0): # random crop debug view
+                    view_img = cropped_img.squeeze(0).cpu().numpy()
+                    view_box = cropped_box
+                    AnimationViewer(view_img, view_box, "fp crop")
+                cropped_img = cropped_img.squeeze_(0).unsqueeze_(-1)
+                n_box = cropped_box.shape[0]
+                ## mode
+                fp_mode = cfg.TRAIN["FP_REDUCTION_MODE"] # 0,0 | 0,1 | 1,0 (conf, cls_index)
+                assert fp_mode in ("0,0", "0,1", "1,0")
+                conf_cls_label = torch.zeros((n_box,2), device=self.device) # conf == 0 and cls == 0
+                if fp_mode == "0,1": # conf == 0 only
+                    conf_cls_label[:,1] = 1
+                elif fp_mode == "1,0": # cls == 0 only
+                    conf_cls_label[:,0] = 1
+                cropped_box = torch.cat([cropped_box, conf_cls_label], dim=1)
+                cropped_imgs.append(cropped_img.cpu())
+                cropped_boxes.append(cropped_box.cpu().numpy())
+                cropped_names.append(img_name)
+
+        # the tmp dataset is used for "__creat_label" only
+        tmp_dataset = FastImageDataset(cropped_imgs, cropped_boxes, cropped_names)
+        tmp_dataset = YOLO4_3DDataset(tmp_dataset, classes=[0,1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], batch_1_eval=False)
+        tmp_dataloader = DataLoader(tmp_dataset, batch_size=1000, #big is okay
+                                        num_workers=0,
+                                        shuffle=True, pin_memory=False
+                                        )
+        assert len(tmp_dataloader) == 1
+        for i, (fp_imgs, fp_label_sbbox, fp_label_mbbox, fp_label_lbbox, fp_sbboxes, fp_mbboxes, fp_lbboxes, img_names, shapes_before_pad, _)  in enumerate(tmp_dataloader):
+            return fp_imgs, fp_label_sbbox, fp_label_mbbox, fp_label_lbbox, fp_sbboxes, fp_mbboxes, fp_lbboxes, img_names, shapes_before_pad, _
+            
+            
+            
+
+
+
+                
+
+
+
+class FastImageDataset():
+    def __init__(self, imgs, boxes, pids):
+        self.imgs = imgs
+        self.boxes = boxes
+        self.pids = pids
+    def __getitem__(self, idx):
+        out = self.imgs[idx], self.boxes[idx], self.pids[idx]
+        return out
+    def __len__(self):
+        return len(self.imgs)
+    
+
+
+        
+

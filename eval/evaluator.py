@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import warnings
 current_milli_time = lambda: int(round(time.time() * 1000))
 class Evaluator(object):
-    def __init__(self, model, showatt, pred_result_path, box_top_k):
+    def __init__(self, model, showatt, pred_result_path, box_top_k, conf_thresh=None):
         if cfg.TRAIN["DATA_TYPE"] == 'VOC':
             self.classes = cfg.VOC_DATA["CLASSES"]
         elif cfg.TRAIN["DATA_TYPE"] == 'COCO':
@@ -32,7 +32,7 @@ class Evaluator(object):
         self.showatt = showatt
         self.inference_time = 0.
 
-        self.conf_thresh = cfg.VAL["CONF_THRESH"]
+        self.conf_thresh = cfg.VAL["CONF_THRESH"] if conf_thresh==None else conf_thresh
         self.nms_thresh = cfg.VAL["NMS_THRESH"]
         self.box_top_k = box_top_k
         self.batch_1_eval = cfg.VAL["BATCH_1_EVAL"]
@@ -232,8 +232,8 @@ class Evaluator(object):
 
 
         # (5)Remove bboxes whose score is below the score_threshold
-        classes = np.argmax(pred_prob, axis=-1)
-        scores = pred_conf * pred_prob[np.arange(len(pred_coor)), classes]
+        classes = np.argmax(pred_prob, axis=-1) #predicted class idx
+        scores = pred_conf * pred_prob[np.arange(len(pred_coor)), classes] # score = pred_prob_from_class * pred_conf (p.s. it only used sigmoid, no softmax in YoloHead)
         score_mask = scores > self.conf_thresh
 
         mask = np.logical_and(scale_mask, score_mask)
@@ -246,9 +246,9 @@ class Evaluator(object):
         if self.batch_1_eval:
             shape_before_pad = np.array(shape_before_pad)
             assert shape_before_pad.shape == (3,)
-            invalid_mask_z = (coors[:, 3] > shape_before_pad[0]-1) # z2 > ori_z
-            invalid_mask_y = (coors[:, 4] > shape_before_pad[1]-1) # y2 > ori_y
-            invalid_mask_x = (coors[:, 5] > shape_before_pad[2]-1) # x2 > ori_x
+            invalid_mask_z = ((coors[:, 0] + coors[:, 3])/2 > shape_before_pad[0]-1) # (z1+z2)/2 > ori_z
+            invalid_mask_y = ((coors[:, 1] + coors[:, 4])/2 > shape_before_pad[1]-1) # (y1+y2)/2 > ori_y
+            invalid_mask_x = ((coors[:, 2] + coors[:, 5])/2 > shape_before_pad[2]-1) # (x1+x2)/2 > ori_x
             invalid_mask = invalid_mask_z + invalid_mask_y + invalid_mask_x # the "+" here acts like "logical_or"
             mask = np.invert(invalid_mask)
             coors = coors[mask]

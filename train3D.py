@@ -17,6 +17,7 @@ from torch.utils.tensorboard import SummaryWriter
 import config.yolov4_config as cfg
 from utils import cosine_lr_scheduler
 from utils.log import Logger
+import warnings
 
 #from eval_coco import *
 #from eval.cocoapi_evaluator import COCOAPIEvaluator
@@ -54,11 +55,17 @@ if __name__ == "__main__":
     weight_path = opt.weight_path
     resume = opt.resume
 
-    if (0):
-        weight_path = r"D:/CH/LungDetection/training/checkpoint/train_rc_3_f3/backup_epoch100.pt"
-        resume = False
-        opt.crx_valid = 3
-        opt.eval_interval = 1
+    if (1):
+        warnings.warn("Override opt settings in train3D.py!!!")
+        weight_path = r"D:/CH/LungDetection/training/checkpoint/train_rc_config_2_f0/backup_epoch306.pt"
+        resume = True
+        opt.crx_valid = 0
+        opt.exp_name = "train_rc_config_2_f0_fp_reduction_0,1"
+        writer = SummaryWriter(log_dir=opt.log_path + '/' + opt.exp_name)
+        logger = Logger(log_file_name=opt.log_path + '/' + opt.exp_name + '/log.txt', log_level=logging.DEBUG, logger_name='YOLOv4').get_log()
+        checkpoint_save_dir = 'checkpoint/' + opt.exp_name
+        if not os.path.exists(checkpoint_save_dir):
+            os.mkdir(checkpoint_save_dir)
 
 
     #resume = True
