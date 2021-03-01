@@ -2,6 +2,9 @@ import sys
 sys.path.append("../utils")
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
+
 from utils import tools
 import config.yolov4_config as cfg
 
@@ -19,6 +22,66 @@ class FocalLoss(nn.Module):
 
         return loss
 
+class BinaryFocalLossWithSigmoid(nn.Module):
+    """
+    自己刻的Focal loss，用於Binary classification (就是不像CELoss, 這個沒有softmax)
+    但是對於Batch中的每個sample(根據其y=1 or 0),有類似於focal loss去給...
+        weight=alpha_t*(1-p_t)**gamma
+            , where "p_t = p if y==1 else (1-p)"
+                    "alpha_t = alpha if y==1 else (1-alpha)"
+
+    p_t越大，代表模型分類結果越正確(easy case)，越小則越錯誤(hard case)
+
+    參見:
+        https://arxiv.org/pdf/1708.02002.pdf
+        https://pytorch.org/docs/stable/generated/torch.nn.BCEWithLogitsLoss.html
+    """
+    def __init__(self, gamma=2.0, alpha=0.5, pos_weight=None, reduction="mean"):
+        """
+        weight=alpha_t*(1-p_t)**gamma
+            , where "p_t = p if y==1 else (1-p)"
+                    "alpha_t = alpha if y==1 else (1-alpha)"
+
+        **Argument
+            gamma: scalar, 定義域: [0,inf)
+            alpha: scalar, 定義域: [0,1]
+            pos_weight: FloatTensor of shape (C,)
+            reduction: "none"|"mean"|"sum", 
+            
+        **Note
+            1. 原始paper中，最好的gamma=2.0, alpha=0.25
+            2. B=batch_size, C=class(這不是多分類問題，而是你要做幾個不同的二分類(on single head)，比如ER/PR/HER2預測+/-，是個3個不同的二分類問題，C=3)
+            3. 由於會呼叫torch.BCEWithLogitsLoss, 輸入x請不要先做sigmoid操作!
+            4. weight != pos_weight， weight是(B,C)的張量，每個sample的每個class有自己的weighy。
+            5. pos_weight是(C,)的張量，表示加權在**正樣本**上的權重，用來平衡C個二分類問題中, 正負樣本差太多的問題，若 positive:negative = 300:100, 該C的pos_weight應設為1/3
+            6. alpha是在改變正負樣本比重，由於已有pos weight，設成0.5
+        """
+        super(BinaryFocalLossWithSigmoid, self).__init__()
+        self.gamma = gamma
+        self.alpha = alpha
+        self.pos_weight = pos_weight
+        self.reduction = reduction
+ 
+    def forward(self, x, y):
+        """
+        x: 還沒過sigmoid的 FloatTensor with shape (B,C)
+        y: 裡面只有1/0的 LongTensor with shape (B,C) 
+        **Note
+            B=batch_size, C=class(這不是多分類問題，而是你要做幾個不同的二分類，比如ER/PR/HER2預測+/-，是個3個不同的二分類問題，C=3)
+            
+            e.g. B=1,C=3
+                x=Tensor([-1.233, 2.33, 5.322]), y=LongTensor([0,1,1]) #此y對應到該case是ER(-)/PR(+)/HER2(+)
+        """
+        ## 計算w, 只是凸顯難易樣本的weighting，(原paper)不需要backprop到它
+        p = torch.sigmoid(x) # (B,C)
+        num_classes = p.shape[1] # C
+        p_t = p*y + (1-p)*(1-y) # p_t = p if y==1 else (1-p) (根據focal loss paper中的定義), (B,C)
+        alpha_t = self.alpha*y + (1-self.alpha)*(1-y) # (B,C)
+        weight = alpha_t * (1-p_t).pow(self.gamma) # (B,C)
+        weight = weight.detach()
+        ## 丟進BCEWithLogits
+        loss = F.binary_cross_entropy_with_logits(x, y.float(), weight=weight, pos_weight=self.pos_weight, reduction=self.reduction)
+        return loss
 
 class YoloV4Loss(nn.Module):
     def __init__(self, anchors, strides, iou_threshold_loss=0.5, dims=2):
@@ -82,7 +145,8 @@ class YoloV4Loss(nn.Module):
         """
         dims = self.__dims
         BCE = nn.BCEWithLogitsLoss(reduction="none")
-        FOCAL = FocalLoss(gamma=2, alpha=1.0, reduction="none")
+        #FOCAL = FocalLoss(gamma=2, alpha=0.5, reduction="none")
+        FOCAL = BinaryFocalLossWithSigmoid(gamma=2.0, alpha=0.5, pos_weight=0.5, reduction="none")
         if dims==3:
             batch_size, grid = p.shape[0], p.shape[1:4]
             img_size = stride * torch.tensor([_ for _ in grid])

@@ -123,14 +123,17 @@ class LungDataset(Dataset):
         ## random crop related paremeters
         self.use_random_crop = False
         self.random_crop_file_prefix = ""
-        self.random_crop_ncopy = 0
-        self.random_choose_one = False
+        self.random_crop_ncopy = 0 # the total number of valid crops for each pid
+        self.random_choose_one = False # whether to randomly choose among crops at each iteration
         self.batch_1_eval = False
         self.equal_spacing = (None,None,None)
+        self.random_crop_root = NPY_SAVED_PATH # the dir to load random_crop files from
+        self.random_crop_bbox_mode = "1,1"  # add what after zyxzyx
 
         ## lung voi related parameters
-        self.use_lung_voi = False
-        self.lung_voi_lut = {}
+        self.use_lung_voi = False # whether to use lung_voi as "general_output" instead of "the whole image"
+        self.lung_voi_lut = {} # key:pid, value:voi
+
 
         df = self.voi_excel
         col_top_left_x, col_top_left_y, col_top_left_z = df.columns.get_loc("top_left_x"), df.columns.get_loc("top_left_y"), df.columns.get_loc("top_left_z")
@@ -208,11 +211,13 @@ class LungDataset(Dataset):
         self.batch_1_eval = batch_1_eval
         self.equal_spacing = equal_spacing
 
-    def set_random_crop(self, random_crop_file_prefix, ncopy, random_choose_one=False):
+    def set_random_crop(self, random_crop_file_prefix, ncopy, random_choose_one=False, random_crop_root=NPY_SAVED_PATH, random_crop_bbox_mode="1,1"):
         self.use_random_crop = True
         self.random_crop_file_prefix = random_crop_file_prefix
         self.random_crop_ncopy = ncopy
         self.random_choose_one = random_choose_one
+        self.random_crop_root = random_crop_root
+        self.random_crop_bbox_mode = random_crop_bbox_mode
 
     def set_lung_voi(self, use_lung_voi=True):
         assert (use_lung_voi in (True, False))
@@ -249,7 +254,7 @@ class LungDataset(Dataset):
                 i = i // self.random_crop_ncopy # index for self.data
             if (1): #pre-cropped
                 _, _, pid = self.data[i] # ignore npy_name if using random crop!
-                fpath = pjoin(NPY_SAVED_PATH, str(pid), "{}_c{}.pkl".format(self.random_crop_file_prefix, c+1)) # c+1 to turn c0~c4 -> c1~c5
+                fpath = pjoin(self.random_crop_root, str(pid), "{}_c{}.pkl".format(self.random_crop_file_prefix, c+1)) # c+1 to turn c0~c4 -> c1~c5
                 #print(f"i={i}, c={c}, opening {fpath} ...")
                 with open(fpath, "rb") as f:
                     img, bboxes = pickle.load(f)
@@ -267,7 +272,15 @@ class LungDataset(Dataset):
             assert bboxes.ndim==2
             if bboxes.shape[1] == 6 :
                 n_box = bboxes.shape[0]
-                bboxes = np.concatenate([bboxes, np.ones((n_box,2))], axis=-1) # zyxzyx -> zyxzyx11
+                if self.random_crop_bbox_mode == "1,1":
+                    bboxes = np.concatenate([bboxes, np.ones((n_box,2))], axis=-1) # zyxzyx -> zyxzyx11
+                else:
+                    bboxes = np.concatenate([bboxes, np.zeros((n_box,2))], axis=-1) # zyxzyx -> zyxzyx11
+                    if self.random_crop_bbox_mode == "0,1":
+                        bboxes[..., -1] = 1
+                    elif self.random_crop_bbox_mode == "1,0":
+                        bboxes[..., -2] = 1
+
             if (0): #debug
                 print("pid={}, copy#={}".format(pid, c+1))
                 view_img = img.squeeze(-1).numpy()

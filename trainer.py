@@ -31,7 +31,7 @@ from dataset import Tumor, LungDataset
 from databuilder.yolo4dataset import YOLO4_3DDataset
 from tqdm import tqdm
 from apex import amp
-from global_variable import USE_LUNA, MASK_SAVED_PATH
+from global_variable import USE_LUNA, MASK_SAVED_PATH, NEGATIVE_NPY_SAVED_PATH
 
 class Trainer(object):
     def __init__(self, testing_mode, weight_path, checkpoint_save_dir, resume, gpu_id, accumulate, fp_16, writer, logger, crx_fold_num,
@@ -68,13 +68,13 @@ class Trainer(object):
         self.eval_conf_thresh = cfg.VAL["CONF_THRESH"] if eval_conf_thresh==None else eval_conf_thresh
 
         self.do_fp_reduction = cfg.TRAIN["DO_FP_REDUCTION"]
-        self.fp_reduction_target = cfg.TRAIN["FP_REDUCTION_TARGET_DATASET"] 
+        #self.fp_reduction_target = cfg.TRAIN["FP_REDUCTION_TARGET_DATASET"] 
         self.fp_reduction_start_epoch = cfg.TRAIN["FP_REDUCTION_START_EPOCH"]
         self.fp_reduction_interval = cfg.TRAIN["FP_REDUCTION_INTERVAL"]
         if self.do_fp_reduction:
-            assert not self.eval_random_crop, "FP_REDUCTION CAN ONLY BE DONE WHEN USING THE WHOLE IMAGE AS EVAL DATA!"
-            assert self.testing_mode != 1 ## only debug/train/validation allowed
-            assert self.fp_reduction_target.lower() in ["training", "testing"]
+            #assert not self.eval_random_crop, "FP_REDUCTION CAN ONLY BE DONE WHEN USING THE WHOLE IMAGE AS EVAL DATA!"
+            #assert self.testing_mode != 1 ## only debug/train/validation allowed
+            #assert self.fp_reduction_target.lower() in ["training", "testing"]
             self.empty_dataset = LungDataset.load(dataset_name) # empty means "didn't get_data"
             assert self.fp_reduction_interval > 0
         
@@ -94,14 +94,16 @@ class Trainer(object):
         #validation_dataset =  LungDataset.load(dataset_name)
         #validation_dataset.data = validation_data
         test_dataset =  LungDataset.load(dataset_name)
-        if self.testing_mode==0:
+        if self.testing_mode==0: # validation
             test_dataset.data = validation_data
-        elif self.testing_mode==1:
+        elif self.testing_mode==1: # testing
             test_dataset.data = test_data
-        elif self.testing_mode == -1:
+        elif self.testing_mode == -1: # train_debug
             test_dataset.data = train_data[:50]
+        elif self.training_mode == -2: # whole train_debug
+            test_dataset.data = train_data
         else:
-            raise TypeError(f"Invalid testing mode: {self.testing_mode}. {{1: 'test', 0: 'val', -1: 'train'}}")
+            raise TypeError(f"Invalid testing mode: {self.testing_mode}. {{1: 'test', 0: 'val', -1: 'train_debug', -2: 'whole_train_debug'}}")
         if self.eval_random_crop:
             #test_dataset.set_random_crop(self.random_crop_file_prefix, 1) # no reason to use ncopy > 1 during eval
             test_dataset.set_random_crop(self.random_crop_file_prefix, 1, False) # no reason to use ncopy > 1 during eval
@@ -144,20 +146,17 @@ class Trainer(object):
                         trimmed_data.append(datum)
                 test_dataset.data = trimmed_data
         
-        """if self.do_fp_reduction: # run "evaluate" on this set to get "fp_bboxes"
-            fp_reduction_dataset = train_dataset if self.fp_reduction_target.lower()=="training" else test_dataset
-            for i in range(len(fp_reduction_dataset.data)): 
-                _, bboxs_ori, pid = fp_reduction_dataset.data[i]
-                datum = (None, bboxs_ori, pid) # force load original img
-                fp_reduction_dataset.data[i] = datum
-            fp_reduction_dataset.set_batch_1_eval(True, cfg.VAL["RANDOM_CROPPED_VOI_FIX_SPACING"])
-            self.fp_reduction_dataset = YOLO4_3DDataset(fp_reduction_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False)
-            self.fp_reduction_dataloader =  DataLoader(self.fp_reduction_dataset,
-                                           batch_size=1000, # as big as possible is okay
-                                           num_workers=0,
-                                           shuffle=False, pin_memory=False
-                                           )"""
-
+        if self.do_fp_reduction: # (pre-cropped version)
+            assert self.train_random_crop
+            train_fp_dataset = LungDataset.load(dataset_name)
+            train_fp_dataset.data = train_data
+            train_fp_dataset.set_random_crop("false_positive", 3, True, NEGATIVE_NPY_SAVED_PATH, "0,1")
+            self.train_fp_dataset = YOLO4_3DDataset(train_fp_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False)
+            self.train_fp_data_loader = DataLoader(self.train_fp_dataset,
+                                           batch_size=cfg.TRAIN["BATCH_SIZE"],
+                                           num_workers=cfg.TRAIN["NUMBER_WORKERS"]//2,
+                                           shuffle=True, pin_memory=False
+                                           )
 
 
         self.train_dataset = YOLO4_3DDataset(train_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False)
@@ -270,7 +269,8 @@ class Trainer(object):
             n_batch = len(self.train_dataloader)
 
             do_fp_reduction_this_epoch = (self.do_fp_reduction) and (epoch>=self.fp_reduction_start_epoch) and (epoch%self.fp_reduction_interval==0)
-            
+            fp_iterator = iter(self.train_fp_data_loader)
+
             for i, batched_data in tqdm(enumerate(self.train_dataloader), total=n_batch):
                 imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, _ = batched_data
                 
@@ -279,13 +279,24 @@ class Trainer(object):
                     label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = \
                         label_sbbox[0], label_mbbox[0], label_lbbox[0], sbboxes[0], mbboxes[0], lbboxes[0]
                     img_names = [_[0] for _ in img_names]
+                
 
-                if do_fp_reduction_this_epoch: # fp reduction
-                    fp_data = self.get_fp_for_reduction(img_names)
+                # fp reduction (batch_version, slow and buggy)
+                #if do_fp_reduction_this_epoch:
+                #    fp_data = self.get_fp_for_reduction_batch(img_names)
+                #    cat = lambda t1,t2: torch.cat([t1,t2], dim=0) if type(t1)==torch.Tensor==type(t2) else t1+t2
+                #    merged_data = [cat(t1,t2) for t1,t2 in zip(batched_data, fp_data)]
+                #    imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, _ = merged_data
+                #    self.model.train() # turn from evaluating back to training
+
+                # fp reduction (load npy version)
+                if do_fp_reduction_this_epoch:
+                    fp_data = next(fp_iterator)
                     cat = lambda t1,t2: torch.cat([t1,t2], dim=0) if type(t1)==torch.Tensor==type(t2) else t1+t2
                     merged_data = [cat(t1,t2) for t1,t2 in zip(batched_data, fp_data)]
                     imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, _ = merged_data
-                    self.model.train() # turn from evaluating back to training
+
+
                 self.scheduler.step(len(self.train_dataloader)*epoch + i)
                 imgs = imgs.to(self.device)
                 label_sbbox = label_sbbox.to(self.device)
@@ -528,7 +539,7 @@ class Trainer(object):
         writer = self.writer
         logger = self.logger
 
-    def get_fp_for_reduction(self, img_names):
+    def get_fp_for_reduction_batch(self, img_names, return_crop_only=False): # batch_version
         """
         fp_bboxes_all_pid: a dictionary, key=pid, value=fp_bboxes
         fp_bboxes: shape (X, 8), where 8 = pred_coor(6) + pred_conf(1) + pred_class_idx(1) [X differs due to postprocessing]
@@ -618,7 +629,7 @@ class Trainer(object):
                     view_img = cropped_img.squeeze(0).cpu().numpy()
                     view_box = cropped_box
                     AnimationViewer(view_img, view_box, "fp crop")
-                cropped_img = cropped_img.squeeze_(0).unsqueeze_(-1)
+                cropped_img = cropped_img.squeeze_(0).unsqueeze_(-1) # (1,Z,Y,X) -> (Z,Y,X,1)
                 n_box = cropped_box.shape[0]
                 ## mode
                 fp_mode = cfg.TRAIN["FP_REDUCTION_MODE"] # 0,0 | 0,1 | 1,0 (conf, cls_index)
@@ -632,6 +643,14 @@ class Trainer(object):
                 cropped_imgs.append(cropped_img.cpu())
                 cropped_boxes.append(cropped_box.cpu().numpy())
                 cropped_names.append(img_name)
+
+        
+        if return_crop_only: # return numpy fp crop and then exit (not for training)
+            out_imgs = [crop.squeeze_(-1).numpy() for crop in cropped_imgs]
+            out_boxes = [boxes[:,:-2].tolist() for boxes in cropped_boxes]
+            out_names = cropped_names
+            return out_imgs, out_boxes, out_names
+
 
         # the tmp dataset is used for "__creat_label" only
         tmp_dataset = FastImageDataset(cropped_imgs, cropped_boxes, cropped_names)

@@ -142,9 +142,9 @@ TRAIN = {
          "RANDOM_CROP_NCOPY": 20,
 
          "DO_FP_REDUCTION": True,
-         "FP_REDUCTION_TARGET_DATASET": "training", #WIP
-         "FP_REDUCTION_START_EPOCH": 300,
-         "FP_REDUCTION_INTERVAL": 3, 
+         #"FP_REDUCTION_TARGET_DATASET": "training", #WIP
+         "FP_REDUCTION_START_EPOCH": 0,
+         "FP_REDUCTION_INTERVAL": 1, 
          "FP_REDUCTION_MODE": "0,1", # 0,0 | 0,1 | 1,0 (conf, cls_index)
          #for 96
          #"WARMUP_EPOCHS": 10 #40  # or None
@@ -220,7 +220,8 @@ _check()
 """
 UPDATE_NOTE:
 1. WIP: add gradient for bbox with label=0 (change loss_conf in yolo_loss.py)
+2. Add FP reduction by using the pre-cropped negative sample pool
 
 WHAT'S NEW:
-** 
+** Add FP reduction by using the pre-cropped negative sample pool
 """
