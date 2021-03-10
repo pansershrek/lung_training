@@ -3,6 +3,11 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
+
+if __name__ == "__main__":
+    import sys
+    sys.path.append("D:/CH/LungDetection/training")
+
 from model.layers.attention_layers import SEModule, SEModule_Conv, CBAM
 import config.yolov4_config as cfg
 
@@ -28,6 +33,7 @@ activate_name = {
 class Convolutional(nn.Module):
     def __init__(self, filters_in, filters_out, kernel_size, stride=1, norm='bn', activate='mish', dims=2):
         super(Convolutional, self).__init__()
+        # ccy: the "norm" and "activate" argument seems useless here (always used BN3D + ReLU)
 
         self.norm = norm
         self.activate = activate
@@ -70,18 +76,26 @@ class CSPBlock(nn.Module):
         if hidden_channels is None:
             hidden_channels = out_channels
 
-        self.block = nn.Sequential(
-            Convolutional(in_channels, hidden_channels, 1, dims=dims),
-            Convolutional(hidden_channels, out_channels, 3, dims=dims)
-        )
-
         self.activation = activate_name[residual_activation]
         self.attention = cfg.ATTENTION["TYPE"]
+
+        #if self.attention == "SplAt":
+        #    use_splat = True
+        #    self.attention = None
+
         if self.attention == 'SEnet':self.attention_module = SEModule(out_channels, dims=dims)
         elif self.attention == 'SEnetConv':self.attention_module = SEModule_Conv(out_channels, dims=dims)
         elif self.attention == 'CBAM':self.attention_module = CBAM(out_channels, dims=dims)
         else: self.attention = None
 
+ 
+
+        self.block = nn.Sequential(
+            Convolutional(in_channels, hidden_channels, 1, dims=dims),
+            Convolutional(hidden_channels, out_channels, 3, dims=dims)
+        )
+
+        
     def forward(self, x):
         residual = x
         out = self.block(x)
@@ -198,7 +212,7 @@ class CSPDarknet53(nn.Module):
 
 
 
-        if (1): # ccy; it runs but uses so much GRAM
+        if (1): # ccy; it runs but uses so much GRAM (edit: use smaller channel per stage can solve the problem)
             feature_channels = [int(_ * (channel_factor)) for _ in feature_channels]
             self.stem_conv = Convolutional(in_channel, stem_channels, 3, dims=dims)
             self.stages = nn.ModuleList([
@@ -337,11 +351,33 @@ def _BuildCSPDarknet53(in_channel, weight_path, resume, dims=2):
     return out
 
 if __name__ == '__main__':
-    model = CSPDarknet53()
-    x = torch.randn(1, 3, 224, 224)
-    y = model(x)
+    def verbose_forward(model, x):
+        x = model.stem_conv(x)
 
-    model = CSPDarknet53(dims=3)
-    x = torch.randn(1, 3, 224, 224, 224)
-    y = model(x)
-    print(y.size())
+        features = []
+        print("In CSP backbone")
+        for i,stage in enumerate(model.stages):
+            x_ori_shape = x.shape
+            x = stage(x)
+            print("stage {}: {} -> {}".format(i, x_ori_shape, x.shape))
+            features.append(x)
+        return features[-model.num_features:]
+
+
+    from torchsummary import summary
+
+    #device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cpu"
+    backbone, num_features = _BuildCSPDarknet53(1, None, False, dims=3)
+    x = torch.randn((1, 1, 128, 128, 128), device=device)
+    model = backbone.to(device)
+    print("num features:", num_features)
+    if (1): # torchsummary
+        summary(backbone, (1,128,128,128), device=device)
+ 
+        # verbose forward
+        verbose_forward(backbone, x)
+        # forward 
+        ys = model(x)
+        print("output:", *[y.shape for y in ys])
+

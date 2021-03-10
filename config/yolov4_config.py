@@ -122,13 +122,13 @@ TRAIN = {
          "MULTI_SCALE_TRAIN": False,
          "IOU_THRESHOLD_LOSS": 0.5, # *0.5, 0.02
          #for 640
-         "YOLO_EPOCHS": 400, #8: 425, 500, 800
+         "YOLO_EPOCHS": 300, #8: 425, 500, 800, *300
          #for 96
          #"YOLO_EPOCHS": 100,
          #"Mobilenet_YOLO_EPOCHS": 120,
          "OPTIMIZER": "SGD", 
          "USE_SGD_BEFORE_LOSS_LOWER_THAN_5": False,
-         "NUMBER_WORKERS": 6,  # *6
+         "NUMBER_WORKERS": 0,  # *6, 0 # for resnest, workers==0 runs faster
          "MOMENTUM": 0.9,
          "WEIGHT_DECAY": 0.0001, # *0.0005
          "LR_INIT": 5e-5 , #SGD: 1e-4, *5e-5, 5e-6               #ADAM:
@@ -143,9 +143,13 @@ TRAIN = {
 
          "DO_FP_REDUCTION": True,
          #"FP_REDUCTION_TARGET_DATASET": "training", #WIP
-         "FP_REDUCTION_START_EPOCH": 0,
+         "FP_REDUCTION_START_EPOCH": 150,  # *150
          "FP_REDUCTION_INTERVAL": 1, 
-         "FP_REDUCTION_MODE": "0,1", # 0,0 | 0,1 | 1,0 (conf, cls_index)
+         "FP_REDUCTION_MODE": "0,1", # 0,0 | 0,1 | 1,0 | 1,1 (cls_index, mix)
+         "FP_REDUCTION_USE_ZERO_CONF": False, # whether to set conf in __create_label to 0 for fp
+         # 2021/3/4 v1: (目前 "0,1" + No_use_zero_conf + "try fp reduction loss" 表現最好)
+         # 2021/3/6: "0,1" + use_zero_conf has similar(same) performance as 2021/3/4
+         # 2021/3/8: "1,1" + use_zero_conf has super bad result (cpm<0.3)
          #for 96
          #"WARMUP_EPOCHS": 10 #40  # or None
          }
@@ -158,11 +162,11 @@ VAL = {
         #"TEST_IMG_BBOX_ORIGINAL_SIZE": (128,128,128),
         "TEST_IMG_SIZE": (128,128,128), # (128,128,128), (128,256,256)
         "TEST_IMG_BBOX_ORIGINAL_SIZE": (128,128,128), # (128,128,128), (128,256,256)
-        "NUMBER_WORKERS": 2,
+        "NUMBER_WORKERS": 6,
         "CONF_THRESH": 0.015, #0.005, 0.01, *0.015, 0.03, 0.05, 0.1, 0.15  # score_thresh in utils.tools.nms (discard bbox < thresh)
         "NMS_THRESH": 0.15, #0.15, *0.3, 0.45 # iou_thresh in utils.tools.nms (if two bbox has iou > thresh, discard one of them)
         "BOX_TOP_K": 512, # highest number of bbox after nms # *256, 512
-        "TP_IOU_THRESH": 0.15, # iou threshold to view a predicted bbox as TP # *0.15
+        "TP_IOU_THRESH": 0.15, # iou threshold to view a predicted bbox as TP # *0.15, 0.3
 
         "BATCH_SIZE": 1, # 1 or 8
 
@@ -201,13 +205,25 @@ MODEL = {#"ANCHORS":[[(1.25, 1.625), (2.0, 3.75), (4.125, 2.875)],  # Anchors fo
         #"ANCHORS3D":  [ [[3/8., 6/8., 6/8.], [4/8., 7/8., 7/8.], [4/8., 8/8., 8/8.]],  #calc from luna
         #                [[6/16., 9/16., 9/16.], [6/16., 10/16., 10/16.], [7/16., 11/16., 11/16.]],
         #                [[8/32., 14/32., 14/32.], [11/32., 18/32., 18/32.], [16/32., 27/32., 26/32.]] ],
-         "STRIDES":[4,8,16], # original: [8,16,32] # the last elements should == base_multiple
          "ANCHORS_PER_SCLAE":3,
+
+         ## General params
+         "BACKBONE": "ResNeSt", # ResNeSt | CSPDarknet
+         "STRIDES":[4,8,16], # [4,8,16] for CSPDarknet; [4,8,16] for resnest # the last elements should == base_multiple
          "BASE_MULTIPLE":16, # == 2 ^ (#_stages in CSPDarknet)
+
+         ## CSPDarknet related parameters
          "CSPDARKNET53_STEM_CHANNELS": 4, 
          "CSPDARKNET53_FEATURE_CHANNELS": [8,16,32,64] ,  #length of this should == (#_stages in CSPDarknet)
          "CSPDARKNET53_BLOCKS_PER_STAGE": [3,3,3] , #length of this should == (#_stages in CSPDarknet) - 1
          "VERBOSE_SHAPE": False,
+
+         ## ResNeSt related parameters
+         "RESNEST_STEM_WIDTH": 16, # similar to stem_channel, just a little bit different
+         "RESNEST_EXPANSION": 2,  # orginal: 4 (higher -> less param)
+         "RESNEST_FEATURE_CHANNELS": (24, 64, 128), # length == #_stages-1 == 3
+         "RESNEST_BLOCKS_PER_STAGE": (3 ,4, 6, 3), # length == #_stages == 4
+         "RESNEST_STRIDE_PER_LAYER": (1, 2, 2)
          }
 
 def _check():
@@ -220,8 +236,11 @@ _check()
 """
 UPDATE_NOTE:
 1. WIP: add gradient for bbox with label=0 (change loss_conf in yolo_loss.py)
-2. Add FP reduction by using the pre-cropped negative sample pool
+2. Add FP reduction by using the pre-cropped negative sample pool (config 4) (both fp_dataset_0_conf and online hardmining seems not good (v1))
+3. Try calculate loss_conf using [ only top k hard negative pred bbox/grid and all pos bbox/grid ] (very bad if use zero_conf + cls==1, but ok if use zero_conf + cls==0)
+4. Try ResNeSt (config 5)
+
 
 WHAT'S NEW:
-** Add FP reduction by using the pre-cropped negative sample pool
+** Try ResNeSt backbone
 """

@@ -33,7 +33,7 @@ def AUC(froc_x, froc_y, normalize=False):
 def draw_full(froc_x, froc_y, color, label, linestyle, x_limit, normalize=False):
     area = AUC(froc_x, froc_y, normalize=normalize)
     plt.plot(froc_x, froc_y, color=color, label=label +
-             ', Az = %.3f' % area, linestyle=linestyle)
+             ', AUC = %.3f' % area, linestyle=linestyle)
 
 def build_threshold(th_step):
     thresholds = []

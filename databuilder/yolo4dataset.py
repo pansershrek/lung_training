@@ -33,7 +33,7 @@ def gray2rgb(image):
             return ret
 class YOLO4_3DDataset(Dataset):
 
-    def __init__(self, ImageDataset, classes, img_size=(640, 160, 640), cache_size=0, batch_1_eval=False):
+    def __init__(self, ImageDataset, classes, img_size=(640, 160, 640), cache_size=0, batch_1_eval=False, use_zero_conf=False):
         self.img_size = img_size  # For Multi-training
 
         self.__image_dataset = ImageDataset
@@ -43,6 +43,7 @@ class YOLO4_3DDataset(Dataset):
         self.class_to_id = dict(zip(self.classes, range(self.num_classes)))
         self.cacher = LRUCache(cache_size=cache_size)
         self.batch_1_eval = batch_1_eval
+        self.use_zero_conf = use_zero_conf
         if batch_1_eval:
             warnings.warn("batch_1_eval is on!")
 
@@ -247,7 +248,7 @@ class YOLO4_3DDataset(Dataset):
         label = [np.zeros((int(img_size[0] / strides[i]), int(img_size[1] / strides[i]), int(img_size[2] / strides[i]), anchors_per_scale, d_xyz+d_cls+self.num_classes))
                                                                       for i in range(3)]
         for i in range(3):
-            label[i][..., 7] = 1.0
+            label[i][..., 7] = 1.0 # assign all **mix** to 1.0
 
         bboxes_yxhw = [np.zeros((15, 6)) for _ in range(3)]   # Darknet the max_num is 30
         bbox_count = np.zeros((3,))
@@ -260,7 +261,7 @@ class YOLO4_3DDataset(Dataset):
             else:
                 bbox_mix = None
 
-            # onehot
+            # onehot (on classes)
             one_hot = np.zeros(self.num_classes, dtype=np.float32)
             one_hot[bbox_class_ind] = 1.0
             one_hot_smooth = dataAug.LabelSmooth()(one_hot, self.num_classes)
@@ -289,7 +290,13 @@ class YOLO4_3DDataset(Dataset):
 
                     # Bug : 当多个bbox对应同一个anchor时，默认将该anchor分配给最后一个bbox
                     label[i][zind, yind, xind, iou_mask, 0:6] = bbox_yxhw
-                    label[i][zind, yind, xind, iou_mask, 6:7] = 1.0
+                    # conf
+                    if (1): # ccy: enable conf=0 in label
+                        conf_label = 0.0 if self.use_zero_conf else 1.0
+                        label[i][zind, yind, xind, iou_mask, 6:7] = conf_label
+                    else: # original
+                        label[i][zind, yind, xind, iou_mask, 6:7] = 1.0  
+
                     label[i][zind, yind, xind, iou_mask, 7:8] = bbox_mix
                     label[i][zind, yind, xind, iou_mask, 8:] = one_hot_smooth
 

@@ -280,6 +280,8 @@ class LungDataset(Dataset):
                         bboxes[..., -1] = 1
                     elif self.random_crop_bbox_mode == "1,0":
                         bboxes[..., -2] = 1
+                    elif self.random_crop_bbox_mode == "0,0":
+                        pass # already are zeros
 
             if (0): #debug
                 print("pid={}, copy#={}".format(pid, c+1))

@@ -7,14 +7,18 @@ import config.yolov4_config as cfg
 from .backbones.CSPDarknet53 import _BuildCSPDarknet53
 from .backbones.mobilenetv2 import _BuildMobilenetV2
 from .backbones.mobilenetv3 import _BuildMobilenetV3
+from .backbones.resnest import _BuildResNeSt3D
+
 
 class Conv(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, dims=2):
         super(Conv, self).__init__()
-        if (0): #ccy
+
+        if (0): #ccy: avoid error
             padding = 0
         else:
             padding = kernel_size//2
+
         if dims==3:
             self.conv = nn.Sequential(
                 nn.Conv3d(in_channels, out_channels, kernel_size, stride, padding, bias=False),
@@ -213,8 +217,12 @@ class YOLOv4(nn.Module):
 
         a = cfg.MODEL_TYPE['TYPE']
         if cfg.MODEL_TYPE['TYPE'] == 'YOLOv4':
-            # CSPDarknet53 backbone
-            self.backbone, feature_channels = _BuildCSPDarknet53(in_channel=cfg.MODEL_INPUT_CHANNEL, weight_path=weight_path, resume=resume, dims=dims)
+            if cfg.MODEL["BACKBONE"] == "CSPDarknet":
+                # CSPDarknet53 backbone
+                self.backbone, feature_channels = _BuildCSPDarknet53(in_channel=cfg.MODEL_INPUT_CHANNEL, weight_path=weight_path, resume=resume, dims=dims)
+            elif cfg.MODEL["BACKBONE"] == "ResNeSt":
+                # ccy: the load weight feature had been handled in trainer.py, so you don't need to care about it here
+                self.backbone, feature_channels = _BuildResNeSt3D(in_channel=cfg.MODEL_INPUT_CHANNEL, used_for_yolo=True, bottleneck_expansion=4) 
         elif cfg.MODEL_TYPE["TYPE"] == 'Mobilenet-YOLOv4':
             # MobilenetV2 backbone
             self.backbone, feature_channels = _BuildMobilenetV2(in_channel=cfg.MODEL_INPUT_CHANNEL, weight_path=weight_path, resume=resume)

@@ -131,9 +131,9 @@ def random_crop_3D(image, boxes, min_shape=None, max_shape=None):
                 away_x = 10 # unit: pixel
                 away_y = 10
                 away_z = 10
-                x_max = original_w-1-new_w
-                y_max = original_h-1-new_h
-                z_max = original_d-1-new_d
+                x_max = original_w-1-new_w if original_w-1-new_w >=0 else 0
+                y_max = original_h-1-new_h if original_h-1-new_h >=0 else 0
+                z_max = original_d-1-new_d if original_d-1-new_d >=0 else 0
                 left = random.uniform( max(min(ori_x1+ori_box_w-new_w+away_x, x_max), 0), min(max(ori_x1-away_x,0), x_max) )
                 right = left + new_w
                 top =  random.uniform( max(min(ori_y1+ori_box_h-new_h+away_y, y_max), 0), min(max(ori_y1-away_y,0), y_max) )
@@ -141,9 +141,9 @@ def random_crop_3D(image, boxes, min_shape=None, max_shape=None):
                 z1 =   random.uniform( max(min(ori_z1+ori_box_d-new_d+away_z, z_max), 0), min(max(ori_z1-away_z,0), z_max) )
                 z2 = z1 + new_d
             try:
-                assert 0<=left<=right<original_w
-                assert 0<=top<=bottom<original_h
-                assert 0<=z1<=z2<original_d
+                assert 0<=left<=right<=original_w
+                assert 0<=top<=bottom<=original_h
+                assert 0<=z1<=z2<=original_d
             except:
                 msg =  f"left: {left}, right: {right}, original_w: {original_w}\n"
                 msg += f"top: {top}, bottom: {bottom}, original_h: {original_h}\n"

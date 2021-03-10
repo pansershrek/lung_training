@@ -91,14 +91,14 @@ def interpolate_FROC_data(froc_x, froc_y, max_fps=(8, 4, 2, 1, 0.5, 0.25, 0.125)
         else:
             for max_fp in [max_fp]+list(max_fps):
                 log_txt += "No datapoint in froc_x < max_fp = {} (i.e. FP so mush after nms)\n".format(max_fp)
-                sens_for_cpm[max_fp] = 0  # only no prediction can get this max_fp
-
-        froc_x = froc_x[take_is[0]:]
-        froc_y = froc_y[take_is[0]:]
+                sens_for_cpm[max_fp] = 0  # since no prediction can get this max_fp
+        if len(take_is)>0:
+            froc_x = froc_x[take_is[0]:]
+            froc_y = froc_y[take_is[0]:]
 
         if not froc_x[0]==8:
             froc_x = np.insert(froc_x, 0, 8)
-            froc_y = np.insert(froc_y, 0, y_interpolate)
+            froc_y = np.insert(froc_y, 0, sens_for_cpm[8])
         cpm = sum(sens_for_cpm.values())/len(sens_for_cpm)
         log_txt += f"sens_for_cpm: {sens_for_cpm}\n"
         log_txt += f"CPM: {cpm}"
@@ -394,7 +394,7 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
     # axes = plt.gca()
     # axes.axis([0, 10, 0.5, 1])
     # axes.set_aspect('auto')
-    plt.xlim(1, 10)
+    plt.xlim(1, 8)
     x_tick = np.arange(0, 10, 2)
     plt.xticks(x_tick)
     #plt.ylim(0.5, 1)

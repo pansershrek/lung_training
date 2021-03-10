@@ -113,7 +113,7 @@ if __name__ == "__main__":
     batch_1_eval = True
     npy_name = None
     use_lung_voi = True
-    exp_name = "train_rc_config_3_f0"
+    exp_name = "train_rc_config_4_fp_pool_f3"
 
     ## validation
     npy_dir_path = pjoin("checkpoint", exp_name, "evaluate")

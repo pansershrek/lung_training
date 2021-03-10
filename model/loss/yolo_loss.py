@@ -62,16 +62,18 @@ class BinaryFocalLossWithSigmoid(nn.Module):
         self.pos_weight = pos_weight
         self.reduction = reduction
  
-    def forward(self, x, y):
+    def forward(self, input, target):
         """
-        x: 還沒過sigmoid的 FloatTensor with shape (B,C)
-        y: 裡面只有1/0的 LongTensor with shape (B,C) 
+        x/input: 還沒過sigmoid的 FloatTensor with shape (B,C)
+        y/target: 裡面只有1/0的 LongTensor with shape (B,C) 
         **Note
             B=batch_size, C=class(這不是多分類問題，而是你要做幾個不同的二分類，比如ER/PR/HER2預測+/-，是個3個不同的二分類問題，C=3)
             
             e.g. B=1,C=3
                 x=Tensor([-1.233, 2.33, 5.322]), y=LongTensor([0,1,1]) #此y對應到該case是ER(-)/PR(+)/HER2(+)
         """
+        x = input
+        y = target
         ## 計算w, 只是凸顯難易樣本的weighting，(原paper)不需要backprop到它
         p = torch.sigmoid(x) # (B,C)
         num_classes = p.shape[1] # C
@@ -146,7 +148,6 @@ class YoloV4Loss(nn.Module):
         dims = self.__dims
         BCE = nn.BCEWithLogitsLoss(reduction="none")
         #FOCAL = FocalLoss(gamma=2, alpha=0.5, reduction="none")
-        FOCAL = BinaryFocalLossWithSigmoid(gamma=2.0, alpha=0.5, pos_weight=0.5, reduction="none")
         if dims==3:
             batch_size, grid = p.shape[0], p.shape[1:4]
             img_size = stride * torch.tensor([_ for _ in grid])
@@ -171,7 +172,7 @@ class YoloV4Loss(nn.Module):
             label_obj_mask = label[..., 4:5]
             label_cls = label[..., 6:]
             label_mix = label[..., 5:6]
-
+        
 
         # loss iou
         #print("At yololoss.py:")
@@ -205,17 +206,51 @@ class YoloV4Loss(nn.Module):
             else:
                 calc loss using p_conf of bboxes with label_conf==1
             """
+            pos_weight = None
+            FOCAL = BinaryFocalLossWithSigmoid(gamma=2.0, alpha=0.5, pos_weight=pos_weight, reduction="none")
             label_noobj_mask = (1.0 - label_obj_mask) * (iou_max < self.__iou_threshold_loss).float()
             loss_conf = (label_obj_mask * FOCAL(input=p_conf, target=label_obj_mask) +
                     label_noobj_mask * FOCAL(input=p_conf, target=label_obj_mask)) * label_mix
-        else: # try do fp reduction, bbox with label=0 now has gradient!
+        elif (1): # try do fp reduction, bbox with label=0 now has gradient!
             """
             ##PSEUDO
             calc loss using (p_conf of bboxes with label_conf==1) AND (1-p_conf of bboxes with label_conf==0) 
             """
+            tot = label_obj_mask.shape.numel()
+            pos = label_obj_mask.sum().detach()
+            pos_weight = torch.tensor([(tot-pos)/(pos+1e-9)], device=p.device) ## #neg/#pos
+            pos_weight = pos_weight.clamp(1.0, 20.0) ## 20.0 is calculated by anchor size
+            FOCAL = BinaryFocalLossWithSigmoid(gamma=2.0, alpha=0.5, pos_weight=pos_weight, reduction="none")
             label_noobj_mask = (1.0 - label_obj_mask)
             loss_conf = (label_obj_mask * FOCAL(input=p_conf, target=label_obj_mask) +
                     label_noobj_mask * FOCAL(input = 1-p_conf, target=label_noobj_mask)) * label_mix
+        else: # WIP: top k hard negative (grid/bbox) mining 
+            # p_conf of shape (B, Grid,Grid,Grid, Anchor, 1)
+            top_k = 2  # how many hardest neg grid involved in calculating loss_conf
+            pos_weight = None
+            FOCAL = BinaryFocalLossWithSigmoid(gamma=2.0, alpha=0.5, pos_weight=pos_weight, reduction="none")
+            label_noobj_mask = (1.0 - label_obj_mask) # shape (B, G,G,G, Anc, 1)
+            ##p_conf_of_noobjs = p_conf[label_noobj_mask] # shape (#bbox,)
+            Anc = p_conf.shape[-2]
+            p_conf_of_noobjs = (p_conf * label_noobj_mask).reshape(batch_size, -1, Anc, 1)  # (B, G*G*G, Anc, 1)
+            ind = p_conf_of_noobjs.sort(dim=1, descending=True)[1][:, :top_k, :, :] # (B, top_k, Anc, 1)
+            p_conf_top_k_hard_negative =  p_conf_of_noobjs.gather(dim=1, index=ind) # (B, top_k, Anc, 1)
+
+            if (1): # v1, bad if using fp_dataset_zero_conf (maybe stemmed from p_conf is not in [0,1] (why?))
+                label_top_k_hard_negative = torch.zeros((batch_size, top_k, Anc, 1), dtype=torch.long, device=p.device) # (B, top_k, Anc, 1)
+                loss_conf_neg = FOCAL(input = p_conf_top_k_hard_negative, target=label_top_k_hard_negative).sum() # (B, top_k, Anc, 1) -> (1,)
+            else: # v2, not tried yet (maybe no need sigmoid within loss func?)
+                label_top_k_hard_negative = torch.ones((batch_size, top_k, Anc, 1), dtype=torch.long, device=p.device) # (B, top_k, Anc, 1)
+                loss_conf_neg = FOCAL(input = 1-p_conf_top_k_hard_negative, target=label_top_k_hard_negative).sum() # (B, top_k, Anc, 1) -> (1,)
+            
+            loss_conf_pos = (label_obj_mask * FOCAL(input=p_conf, target=label_obj_mask)).sum() # (B, G, G, G, Anc, 1) -> (1,)
+            loss_conf = loss_conf_pos + loss_conf_neg
+            
+            n_pos = label_obj_mask.sum().detach().cpu().item() # number of pos bbox/grid used in loss_conf
+            n_neg = label_top_k_hard_negative.numel()
+            if (0): #debug
+                print("n_pos/n_neg = {}/{} = {}".format(n_pos, n_neg, n_pos/n_neg))
+
 
 
         

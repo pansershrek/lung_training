@@ -100,7 +100,7 @@ class Trainer(object):
             test_dataset.data = test_data
         elif self.testing_mode == -1: # train_debug
             test_dataset.data = train_data[:50]
-        elif self.training_mode == -2: # whole train_debug
+        elif self.testing_mode == -2: # whole train_debug
             test_dataset.data = train_data
         else:
             raise TypeError(f"Invalid testing mode: {self.testing_mode}. {{1: 'test', 0: 'val', -1: 'train_debug', -2: 'whole_train_debug'}}")
@@ -150,8 +150,8 @@ class Trainer(object):
             assert self.train_random_crop
             train_fp_dataset = LungDataset.load(dataset_name)
             train_fp_dataset.data = train_data
-            train_fp_dataset.set_random_crop("false_positive", 3, True, NEGATIVE_NPY_SAVED_PATH, "0,1")
-            self.train_fp_dataset = YOLO4_3DDataset(train_fp_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False)
+            train_fp_dataset.set_random_crop("false_positive", 3, True, NEGATIVE_NPY_SAVED_PATH, cfg.TRAIN["FP_REDUCTION_MODE"])
+            self.train_fp_dataset = YOLO4_3DDataset(train_fp_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False, use_zero_conf=cfg.TRAIN["FP_REDUCTION_USE_ZERO_CONF"])
             self.train_fp_data_loader = DataLoader(self.train_fp_dataset,
                                            batch_size=cfg.TRAIN["BATCH_SIZE"],
                                            num_workers=cfg.TRAIN["NUMBER_WORKERS"]//2,
@@ -368,7 +368,7 @@ class Trainer(object):
                 if self.multi_scale_train and (i+1) % 10 == 0:
                     self.train_dataset.img_size = random.choice(range(10, 20)) * 32
 
-            if (epoch % self.eval_interval==0) or (epoch == self.epochs) or (do_fp_reduction_this_epoch): #tag:Val #20
+            if (epoch % self.eval_interval==0) or (epoch == self.epochs):# or (do_fp_reduction_this_epoch): #tag:Val #20
                 if cfg.TRAIN["DATA_TYPE"] == 'VOC' or cfg.TRAIN["DATA_TYPE"] == 'ABUS' or cfg.TRAIN["DATA_TYPE"] == 'LUNG':
                     area_dist, area_iou, plt, pr999_p_conf, cpm_dist, cpm, max_sens_dist, max_sens_iou, bboxes_pred = self.evaluate(return_box=True)
                     ##TODO: add fp reduction by throwing fp back!
@@ -383,7 +383,7 @@ class Trainer(object):
                         writer.add_scalar('Max sens(dist)', max_sens_dist, epoch)
                     save_per_epoch = 1
                     if epoch % save_per_epoch==0:
-                        self.__save_model_weights(epoch, area_iou)
+                        self.__save_model_weights(epoch, cpm_dist)
                     logger.info('save weights done')
                     logger.info("  ===test CPM:{:.3f}".format(cpm_dist))
 
@@ -514,10 +514,10 @@ class Trainer(object):
             if self.eval_random_crop:
                 area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou = calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, size_threshold=20, th_step=0.01, ori_dataset=self.test_dataset.ori_dataset, det_tp_iou_thresh=self.det_tp_iou_thresh)
             else:
-                if self.do_fp_reduction:
-                    area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, fp_bboxes_all_pid = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=True)
-                else:
-                    area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=False)
+                #if self.do_fp_reduction:
+                #    area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, fp_bboxes_all_pid = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=True)
+                #else:
+                area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=False)
             log_txt += txt + "\n" + sub_log_txt
             plt.savefig(os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
             if hasattr(self, "current_epoch"): # from train3D.py
@@ -632,13 +632,12 @@ class Trainer(object):
                 cropped_img = cropped_img.squeeze_(0).unsqueeze_(-1) # (1,Z,Y,X) -> (Z,Y,X,1)
                 n_box = cropped_box.shape[0]
                 ## mode
-                fp_mode = cfg.TRAIN["FP_REDUCTION_MODE"] # 0,0 | 0,1 | 1,0 (conf, cls_index)
-                assert fp_mode in ("0,0", "0,1", "1,0")
-                conf_cls_label = torch.zeros((n_box,2), device=self.device) # conf == 0 and cls == 0
-                if fp_mode == "0,1": # conf == 0 only
-                    conf_cls_label[:,1] = 1
-                elif fp_mode == "1,0": # cls == 0 only
-                    conf_cls_label[:,0] = 1
+                fp_mode = cfg.TRAIN["FP_REDUCTION_MODE"] # 0,0 | 0,1 | 1,0 | 1,1 (cls_index, mix)
+                assert fp_mode in ("0,1", "1,1")
+                conf_cls_label = torch.ones((n_box,2), device=self.device) #  cls == 1 and mix == 1
+                if fp_mode == "0,1": # cls_idx == 0
+                    conf_cls_label[:,1] = 0
+
                 cropped_box = torch.cat([cropped_box, conf_cls_label], dim=1)
                 cropped_imgs.append(cropped_img.cpu())
                 cropped_boxes.append(cropped_box.cpu().numpy())

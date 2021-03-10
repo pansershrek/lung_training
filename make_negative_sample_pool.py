@@ -38,10 +38,10 @@ def make_negative_samples(save_crop, ncopy=1):
     for exp_name, fold_num in [
 
         ('train_rc_config_3_f0', 0),
-        ('train_rc_config_3_f1', 1),
-        ('train_rc_config_3_f2', 2),
-        ('train_rc_config_3_f3', 3),
-        ('train_rc_config_3_f4', 4),
+        #('train_rc_config_3_f1', 1),
+        #('train_rc_config_3_f2', 2),
+        #('train_rc_config_3_f3', 3),
+        #('train_rc_config_3_f4', 4),
 
         ]:
 
@@ -90,7 +90,8 @@ def make_negative_samples(save_crop, ncopy=1):
                     )
 
             #area_dist, area_iou, plt, _, cpm_dist, cpm, max_sens_dist, max_sens_iou = trainer.evaluate()
-            target_pids = list({pid for _,_,pid in trainer.test_dataset.ori_dataset.data})
+            #target_pids = list({pid for _,_,pid in trainer.test_dataset.ori_dataset.data})
+            target_pids = ["25607996"]
             remained_pids = target_pids.copy()
             n_batches = len(target_pids)//fake_batch_size + 1
             tqdm_bar = tqdm(total=n_batches, desc=f"Making fp fold {fold_num}")
@@ -131,7 +132,89 @@ def save_slices_png(img, save_dir, z_slices=10):
         png.save(png_name)
         
 
+def make_negative_samples_for_luna():
+    raise NotImplementedError() # may not need this
+    import csv
+    from dataset_luna import true2pixel_coordinate
+    def read_candidates_V2(fpath):
+        labels = {}
+        with open(fpath, "r") as f:
+            f = csv.reader(f)
+            for i, line in enumerate(f):
+                if i==0: #title
+                    continue 
+                excel_r = i+1
+                pid, raw_x, raw_y, raw_z, cls_label = line
+                if pid in labels:
+                    labels[pid].append([excel_r, (raw_x, raw_y, raw_z, cls_label)])
+                else:
+                    labels[pid] = [[excel_r, (raw_x, raw_y, raw_z, cls_label)]]
+        return labels
+    annofile = pjoin(LUNA_DIR, "candidates_V2.csv")
+    labels = read_candidates_V2(annofile)
 
+    for subset in range(10):
+        print("Processing subset:", subset)
+        dirpath = pjoin(LUNA_DIR, f"subset{subset}")
+        #dirpath = pjoin(LUNA_DIR, "seg-lungs-LUNA16")
+        for f in tqdm(os.listdir(dirpath)):
+            fpath = pjoin(dirpath, f)
+            if ".mhd" in f:
+                pid = f.split(".mhd")[0]
+                scan, origin, spacing = load_itk(fpath)
+                #scan = normalize(scan)
+                img_size = scan.shape
+                if pid in labels:
+                    bboxes = []
+                    for label in labels[pid]:
+                        # get VOI
+                        excel_r, raws = label
+                        try:
+                            bbox = true2pixel_coordinate(img_size, raws, origin, spacing, extend)
+                        except:
+                            warnings.warn(f"An error occurred at pid={pid}, excel_r={excel_r}; can't get bbox")
+                            #raise
+                            continue
+                        bboxes.append(bbox)
+                        z1, y1, x1, z2, y2, x2 = bbox
+                        voi = {"x": (x1,x2), "y":(y1,y2), "z":(z1,z2)}
+                        # make dcm for Tumor object to prevent error
+                        fake_dcm = FakeDicomReaderForLuna(fpath, pid, spacing, img_size[0])
+                        #scan = fake_dcm.get_series()
+                        tumor = Tumor(excel_r, pid, fpath, voi, "", fake_dcm, tuple(img_size))
+                        # write LungDataset attributes
+                        tumors[excel_r] = tumor
+                        valid_rows.append(excel_r)
+                        if pid not in pid_to_excel_r_relation:
+                            pid_to_excel_r_relation[pid] = [excel_r]
+                        else:
+                            pid_to_excel_r_relation[pid].append(excel_r)
+                        pids.append(pid)
+                    if len(bboxes)!=0: #write log
+                        D,H,W = img_size
+                        log = "{},{},{},{},".format(pid, D,H,W)
+                        for bbox in bboxes:
+                            z1,y1,x1,z2,y2,x2 = bbox
+                            bbox_log = "{},{},{},{},{},{},0 ".format(z1,y1,x1,z2,y2,x2)
+                            log += bbox_log
+                        log = log[:-1]
+                        logs += log + "\n"
+                    if (0):
+                        AnimationViewer(scan, bboxes, note=f"{pid}\n")
+                    #break
+                else:
+                    pass
+                    #warnings.warn(f"PID '{pid}' not existed in labels")
+        #break
+    dataset.tumors = tumors
+    dataset.valid_rows = valid_rows
+    dataset.pid_to_excel_r_relation = pid_to_excel_r_relation
+    dataset.pids = pids
+    logs = logs[:-1]
+    # save
+    with open("annotation_luna.txt", "w") as f:
+        f.write(logs)
+    dataset.save(to_save_path)
 
 
 if __name__ == "__main__":

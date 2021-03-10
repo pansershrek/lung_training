@@ -45,7 +45,7 @@ if __name__ == "__main__":
     opt = parser.parse_args()
 
 
-    for exp_name, fold_num in [
+    for exp_name, fold_num, eval_epochs in [
         #('train_128x128x128_2_f3', 3),
         #('train_256_256_256_1', 0),
         #('debug', 0),
@@ -55,16 +55,28 @@ if __name__ == "__main__":
         #('train_rc_1_f3', 3),
         #('train_rc_1_f4', 4),
         #('train_rc_config_2_biggercrop_f0', 0),
-        ('train_rc_config_3_f0', 0),
-        #('train_rc_config_1_f1', 1),
-        #('train_rc_config_1_f2', 2),
-        #('train_rc_config_1_f3', 3),
-        #('train_rc_config_1_f4', 4),
+        #('train_rc_config_4_fp_pool_f1', 1),
+        #('train_rc_config_3_f0', 0, 204),
+        #('train_rc_config_3_f1', 1, 170),
+        #('train_rc_config_3_f2', 2, 187),
+        #('train_rc_config_3_f3', 3, 306),
+        #('train_rc_config_3_f4', 4, 153),
+
+        #('train_rc_config_4_fp_pool_f0_take2_from136', 0, 187),
+        #('train_rc_config_4_fp_pool_f1', 1, 255),
+        #('train_rc_config_4_fp_pool_f2', 2, 306),
+        #('train_rc_config_4_fp_pool_f3', 3, 204),
+        #('train_rc_config_4_fp_pool_f4', 4, 187),
+
+        #('train_rc_config_5.3_more_param_ori_loss_f0', 0, 204),
+        ('train_rc_config_5.3_more_param_ori_loss_f1', 1, 238),
+        #('train_rc_config_5.3_more_param_ori_loss_f2', 2, 204),
+
 
         ]:
-
+        eval_epochs = [eval_epochs] if (not hasattr(eval_epochs, "__len__")) else eval_epochs
         eval_conf_thresh = [0.015]  ## original: 0.015
-        for testing_mode in [0]: #[0, 1]:
+        for testing_mode in [-1]: #[0, 1, -1, -2]:
             #if testing_mode==0 and exp_name=='Fd0_BS2_Stem4_8_128_r2':
             #    continue
             opt.exp_name = exp_name
@@ -75,18 +87,18 @@ if __name__ == "__main__":
             checkpoint_folder = '{}{}'.format(checkpoint_root, exp_name)
             checkpoints = os.listdir(checkpoint_folder)
 
-            phase = 'VAL'if testing_mode==0 else 'TEST' if testing_mode==1 else 'TRAIN_debug'
+            phase = 'VAL'if testing_mode==0 else 'TEST' if testing_mode==1 else 'TRAIN_debug' if testing_mode==-1 else 'TRAIN_whole_debug'
             writer = SummaryWriter(log_dir=opt.log_path + '/{}_'.format(phase) + opt.exp_name)
             eval_conf_thresh_list = eval_conf_thresh if hasattr(eval_conf_thresh, "__iter__") else [eval_conf_thresh]
             for eval_conf_thresh in eval_conf_thresh_list:
-                for epoch in [323]: #range(204, 306, 17):#list(range(45, 65+1, 10))+[120]: #[255,425,646]: #range(255, 425+1, 17):
+                for epoch in eval_epochs: #range(204, 306, 17):#list(range(45, 65+1, 10))+[120]: #[255,425,646]: #range(255, 425+1, 17):
                     weight_path = '{}/backup_epoch{}.pt'.format(checkpoint_folder, str(epoch))
                     if os.path.exists(weight_path):
                         opt.weight_path = weight_path
                         exp_name_folder = opt.exp_name
                         if testing_mode==1:
                             exp_name_folder = opt.exp_name + '_testing'
-                        elif testing_mode==-1:
+                        elif testing_mode==-1 or testing_mode==-2:
                             exp_name_folder = opt.exp_name + '_train_debug'
                         checkpoint_save_dir = 'preidction/{}/{}_conf{}'.format(exp_name_folder, str(epoch), eval_conf_thresh)
                         if not os.path.exists('preidction'):
