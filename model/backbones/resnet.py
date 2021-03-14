@@ -16,6 +16,9 @@ try:
     from .splat import SplAtConv3d
 except (ImportError, ModuleNotFoundError):
     from splat import SplAtConv3d
+import sys
+sys.path.append("D:/CH/LungDetection/training/detectoRS/mmdet/ops")
+from saconv import SAConv3d
 
 __all__ = ['ResNet', 'Bottleneck']
 
@@ -40,16 +43,17 @@ class Bottleneck(nn.Module):
                  radix=1, cardinality=1, bottleneck_width=64,
                  avd=False, avd_first=False, dilation=1, is_first=False,
                  rectified_conv=False, rectify_avg=False,
-                 norm_layer=None, dropblock_prob=0.0, last_gamma=False):
+                 norm_layer=None, dropblock_prob=0.0, last_gamma=False,
+                 use_SAConv=False):
         super(Bottleneck, self).__init__()
         group_width = int(planes * (bottleneck_width / 64.)) * cardinality
-        self.conv1 = nn.Conv3d(inplanes, group_width, kernel_size=1, bias=False)
+        default_conv = SAConv3d if use_SAConv else nn.Conv3d
+        self.conv1 = default_conv(inplanes, group_width, kernel_size=1, bias=False)
         self.bn1 = norm_layer(group_width)
         self.dropblock_prob = dropblock_prob
         self.radix = radix
         self.avd = avd and (stride > 1 or is_first)
         self.avd_first = avd_first
-
         if self.avd:
             self.avd_layer = nn.AvgPool3d(3, stride, padding=1)
             stride = 1
@@ -68,7 +72,8 @@ class Bottleneck(nn.Module):
                 radix=radix, rectify=rectified_conv,
                 rectify_avg=rectify_avg,
                 norm_layer=norm_layer,
-                dropblock_prob=dropblock_prob)
+                dropblock_prob=dropblock_prob,
+                use_SAConv=False) # ccy: True may cause error
         elif rectified_conv:
             raise NotImplementedError("Rectified convolution not implemented")
             from rfconv import RFConv2d
@@ -79,13 +84,13 @@ class Bottleneck(nn.Module):
                 average_mode=rectify_avg)
             self.bn2 = norm_layer(group_width)
         else:
-            self.conv2 = nn.Conv3d(
+            self.conv2 = default_conv(
                 group_width, group_width, kernel_size=3, stride=stride,
                 padding=dilation, dilation=dilation,
                 groups=cardinality, bias=False)
             self.bn2 = norm_layer(group_width)
 
-        self.conv3 = nn.Conv3d(
+        self.conv3 = default_conv(
             group_width, planes * self.expansion, kernel_size=1, bias=False)
         self.bn3 = norm_layer(planes*self.expansion)
 
@@ -169,6 +174,7 @@ class ResNet(nn.Module):
                  ## no need stem_channel, it's identical to stem_width
                  feature_channels=(128, 256, 512), # original
                  stride_per_layer=(2, 2, 2), # original
+                 use_SAConv=False, #ccy
                  ):
         self.cardinality = groups
         self.bottleneck_width = bottleneck_width
@@ -194,8 +200,12 @@ class ResNet(nn.Module):
             raise NotImplementedError("Rectified convolution not implemented")
             from rfconv import RFConv2d
             conv_layer = RFConv2d
+        elif use_SAConv:
+            conv_layer = SAConv3d
         else:
             conv_layer = nn.Conv3d
+        self.conv_layer = conv_layer
+        self.use_SAConv = use_SAConv
         conv_kwargs = {'average_mode': rectify_avg} if rectified_conv else {}
         if deep_stem:
             self.conv1 = nn.Sequential(
@@ -268,7 +278,7 @@ class ResNet(nn.Module):
 
                 print("initing {}".format(m))
 
-            if isinstance(m, nn.Conv3d):
+            if isinstance(m, nn.Conv3d) or isinstance(m, self.conv_layer):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.kernel_size[2] * m.out_channels
                 m.weight.data.normal_(0, math.sqrt(2. / n))
                 if m.bias is not None:
@@ -293,10 +303,10 @@ class ResNet(nn.Module):
                 else:
                     down_layers.append(nn.AvgPool3d(kernel_size=1, stride=1,
                                                     ceil_mode=True, count_include_pad=False))
-                down_layers.append(nn.Conv3d(self.inplanes, planes * block.expansion,
+                down_layers.append(self.conv_layer(self.inplanes, planes * block.expansion,
                                              kernel_size=1, stride=1, bias=False))
             else:
-                down_layers.append(nn.Conv3d(self.inplanes, planes * block.expansion,
+                down_layers.append(self.conv_layer(self.inplanes, planes * block.expansion,
                                              kernel_size=1, stride=stride, bias=False))
             down_layers.append(norm_layer(planes * block.expansion))
             downsample = nn.Sequential(*down_layers)
@@ -310,7 +320,9 @@ class ResNet(nn.Module):
                                 dilation=1, is_first=is_first, rectified_conv=self.rectified_conv,
                                 rectify_avg=self.rectify_avg,
                                 norm_layer=norm_layer, dropblock_prob=dropblock_prob,
-                                last_gamma=self.last_gamma))
+                                last_gamma=self.last_gamma,
+                                use_SAConv=self.use_SAConv,
+                                ))
         elif dilation == 4:
             layers.append(block(self.inplanes, planes, stride, downsample=downsample,
                                 radix=self.radix, cardinality=self.cardinality,
@@ -319,7 +331,9 @@ class ResNet(nn.Module):
                                 dilation=2, is_first=is_first, rectified_conv=self.rectified_conv,
                                 rectify_avg=self.rectify_avg,
                                 norm_layer=norm_layer, dropblock_prob=dropblock_prob,
-                                last_gamma=self.last_gamma))
+                                last_gamma=self.last_gamma,
+                                use_SAConv=self.use_SAConv,
+                                ))
         else:
             raise RuntimeError("=> unknown dilation size: {}".format(dilation))
 
@@ -332,7 +346,9 @@ class ResNet(nn.Module):
                                 dilation=dilation, rectified_conv=self.rectified_conv,
                                 rectify_avg=self.rectify_avg,
                                 norm_layer=norm_layer, dropblock_prob=dropblock_prob,
-                                last_gamma=self.last_gamma))
+                                last_gamma=self.last_gamma,
+                                use_SAConv=self.use_SAConv,
+                                ))
 
         return nn.Sequential(*layers)
 

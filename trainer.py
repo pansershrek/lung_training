@@ -22,7 +22,7 @@ import os
 from os.path import join as pjoin
 import random_crop
 from utils_hsz import AnimationViewer
-
+from adabelief_pytorch import AdaBelief
 #from eval_coco import *
 #from eval.cocoapi_evaluator import COCOAPIEvaluator
 
@@ -163,6 +163,8 @@ class Trainer(object):
         #self.train_dataset = data.Build_Dataset(anno_file_type="train", img_size=cfg.TRAIN["TRAIN_IMG_SIZE"])
 
         self.epochs = cfg.TRAIN["YOLO_EPOCHS"] if cfg.MODEL_TYPE["TYPE"] == 'YOLOv4' else cfg.TRAIN["Mobilenet_YOLO_EPOCHS"]
+        self.early_stopping_epoch = cfg.TRAIN["EARLY_STOPPING_EPOCH"]
+        assert (type(self.early_stopping_epoch)==int and self.early_stopping_epoch>0) or (self.early_stopping_epoch==None), "Bad stop epoch: {}".format(self.early_stopping_epoch)
         self.train_dataloader = DataLoader(self.train_dataset,
                                            batch_size=cfg.TRAIN["BATCH_SIZE"],
                                            num_workers=cfg.TRAIN["NUMBER_WORKERS"],
@@ -189,15 +191,17 @@ class Trainer(object):
         self.model = Build_Model(weight_path=weight_path, resume=resume, dims=3).to(self.device)
 
         self.optimizer_type = cfg.TRAIN["OPTIMIZER"]
-        assert self.optimizer_type in ("ADAM", "SGD")
-        if cfg.TRAIN["USE_SGD_BEFORE_LOSS_LOWER_THAN_5"]:
+        assert self.optimizer_type in ("ADAM", "SGD", "ADABELIEF")
+        if cfg.TRAIN["USE_SGD_BEFORE_LOSS_LOWER_THAN_THRESH"]:
             self.may_change_optimizer = True
 
-        if self.optimizer_type == 'SGD' or cfg.TRAIN["USE_SGD_BEFORE_LOSS_LOWER_THAN_5"]:
+        if self.optimizer_type == 'SGD' or cfg.TRAIN["USE_SGD_BEFORE_LOSS_LOWER_THAN_THRESH"]:
             self.optimizer = optim.SGD(self.model.parameters(), lr=cfg.TRAIN["LR_INIT"],
                                     momentum=cfg.TRAIN["MOMENTUM"], weight_decay=cfg.TRAIN["WEIGHT_DECAY"])
         elif self.optimizer_type == "ADAM":
             self.optimizer = optim.Adam(self.model.parameters(), lr=cfg.TRAIN["LR_INIT"], weight_decay=cfg.TRAIN["WEIGHT_DECAY"])
+        elif self.optimizer_type == "ADABELIEF":
+            self.optimizer = AdaBelief(self.model.parameters(), lr=cfg.TRAIN["LR_INIT"], eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
         else:
             raise TypeError("Unrecognized optimizer:", self.optimizer_type)
 
@@ -331,13 +335,16 @@ class Trainer(object):
                 loss_items = torch.tensor([loss_ciou, loss_conf, loss_cls, loss, pr999_p_conf])
                 mloss = (mloss * i + loss_items) / (i + 1)
 
-                if self.may_change_optimizer and cfg.TRAIN["USE_SGD_BEFORE_LOSS_LOWER_THAN_5"]:
-                    if loss_conf < 5:
+                if self.may_change_optimizer and cfg.TRAIN["USE_SGD_BEFORE_LOSS_LOWER_THAN_THRESH"]:
+                    if loss_conf < cfg.TRAIN["CHANGE_OPTIMIZER_THRESH"]:
                         print("Change optimizer to {}".format(self.optimizer_type))
                         self.may_change_optimizer = False
                         current_lr = self.scheduler.get_last_lr()
                         if self.optimizer_type=="ADAM":
                             self.optimizer = optim.Adam(self.model.parameters(), lr=cfg.TRAIN["LR_INIT"], weight_decay=cfg.TRAIN["WEIGHT_DECAY"]) 
+                        elif self.optimizer_type=="ADABELIEF":
+                            self.optimizer = AdaBelief(self.model.parameters(), lr=cfg.TRAIN["LR_INIT"], eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
+
                         self.scheduler = cosine_lr_scheduler.CosineDecayLR(self.optimizer,
                                                           T_max=self.epochs*len(self.train_dataloader),
                                                           lr_init=current_lr,
@@ -368,7 +375,7 @@ class Trainer(object):
                 if self.multi_scale_train and (i+1) % 10 == 0:
                     self.train_dataset.img_size = random.choice(range(10, 20)) * 32
 
-            if (epoch % self.eval_interval==0) or (epoch == self.epochs):# or (do_fp_reduction_this_epoch): #tag:Val #20
+            if (epoch % self.eval_interval==0) or (epoch == self.epochs) or (epoch == self.early_stopping_epoch):# or (do_fp_reduction_this_epoch): #tag:Val #20
                 if cfg.TRAIN["DATA_TYPE"] == 'VOC' or cfg.TRAIN["DATA_TYPE"] == 'ABUS' or cfg.TRAIN["DATA_TYPE"] == 'LUNG':
                     area_dist, area_iou, plt, pr999_p_conf, cpm_dist, cpm, max_sens_dist, max_sens_iou, bboxes_pred = self.evaluate(return_box=True)
                     ##TODO: add fp reduction by throwing fp back!

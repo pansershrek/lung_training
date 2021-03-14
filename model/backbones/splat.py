@@ -8,7 +8,9 @@ from torch import nn
 import torch.nn.functional as F
 from torch.nn import Conv3d, Module, Linear, BatchNorm3d, ReLU
 from torch.nn.modules.utils import _pair
-
+import sys
+sys.path.append("D:/CH/LungDetection/training/detectoRS/mmdet/ops")
+from saconv import SAConv3d
 __all__ = ['SplAtConv3d']
 
 class SplAtConv3d(Module):
@@ -18,7 +20,9 @@ class SplAtConv3d(Module):
                  dilation=(1, 1, 1), groups=1, bias=True,
                  radix=2, reduction_factor=4,
                  rectify=False, rectify_avg=False, norm_layer=None,
-                 dropblock_prob=0.0, **kwargs):
+                 dropblock_prob=0.0, 
+                 use_SAConv=False,
+                 **kwargs):
         super(SplAtConv3d, self).__init__()
         ##padding = _pair(padding)
         self.rectify = rectify and (padding[0] > 0 or padding[1] > 0)
@@ -28,22 +32,23 @@ class SplAtConv3d(Module):
         self.cardinality = groups
         self.channels = channels
         self.dropblock_prob = dropblock_prob
+        default_conv = SAConv3d if use_SAConv else Conv3d
         if self.rectify:
             raise NotImplementedError("Rectified convolution not implemented")
             from rfconv import RFConv2d
             self.conv = RFConv2d(in_channels, channels*radix, kernel_size, stride, padding, dilation,
                                  groups=groups*radix, bias=bias, average_mode=rectify_avg, **kwargs)
         else:
-            self.conv = Conv3d(in_channels, channels*radix, kernel_size, stride, padding, dilation,
+            self.conv = default_conv(in_channels, channels*radix, kernel_size, stride, padding, dilation,
                                groups=groups*radix, bias=bias, **kwargs)
         self.use_bn = norm_layer is not None
         if self.use_bn:
             self.bn0 = norm_layer(channels*radix)
         self.relu = ReLU(inplace=True)
-        self.fc1 = Conv3d(channels, inter_channels, 1, groups=self.cardinality)
+        self.fc1 = default_conv(channels, inter_channels, 1, groups=self.cardinality)
         if self.use_bn:
             self.bn1 = norm_layer(inter_channels)
-        self.fc2 = Conv3d(inter_channels, channels*radix, 1, groups=self.cardinality)
+        self.fc2 = default_conv(inter_channels, channels*radix, 1, groups=self.cardinality)
         if dropblock_prob > 0.0:
             raise NotImplementedError("DropBlock not implemented")
             self.dropblock = DropBlock3D(dropblock_prob, 3)

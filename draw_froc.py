@@ -69,14 +69,14 @@ if __name__ == "__main__":
         #('train_rc_config_4_fp_pool_f4', 4, 187),
 
         #('train_rc_config_5.3_more_param_ori_loss_f0', 0, 204),
-        ('train_rc_config_5.3_more_param_ori_loss_f1', 1, 238),
-        #('train_rc_config_5.3_more_param_ori_loss_f2', 2, 204),
+        ('train_rc_config_5.3_more_param_ori_loss_f3', 3, 187),
+        ('train_rc_config_5.3_more_param_ori_loss_f4', 4, 238),
 
 
         ]:
         eval_epochs = [eval_epochs] if (not hasattr(eval_epochs, "__len__")) else eval_epochs
         eval_conf_thresh = [0.015]  ## original: 0.015
-        for testing_mode in [-1]: #[0, 1, -1, -2]:
+        for testing_mode in [1]: #[0, 1, -1, -2]:
             #if testing_mode==0 and exp_name=='Fd0_BS2_Stem4_8_128_r2':
             #    continue
             opt.exp_name = exp_name

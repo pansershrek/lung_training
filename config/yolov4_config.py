@@ -123,16 +123,18 @@ TRAIN = {
          "IOU_THRESHOLD_LOSS": 0.5, # *0.5, 0.02
          #for 640
          "YOLO_EPOCHS": 300, #8: 425, 500, 800, *300
+         "EARLY_STOPPING_EPOCH": None, # None or int
          #for 96
          #"YOLO_EPOCHS": 100,
          #"Mobilenet_YOLO_EPOCHS": 120,
-         "OPTIMIZER": "SGD", 
-         "USE_SGD_BEFORE_LOSS_LOWER_THAN_5": False,
+         "OPTIMIZER": "SGD", # SGD / ADAM / ADABELIEF
+         "USE_SGD_BEFORE_LOSS_LOWER_THAN_THRESH": False,
+         "CHANGE_OPTIMIZER_THRESH": 50,
          "NUMBER_WORKERS": 0,  # *6, 0 # for resnest, workers==0 runs faster
          "MOMENTUM": 0.9,
          "WEIGHT_DECAY": 0.0001, # *0.0005
          "LR_INIT": 5e-5 , #SGD: 1e-4, *5e-5, 5e-6               #ADAM:
-         "LR_END": 5e-8, #SGE: 1e-6, *5e-7, 5e-8, 5e-9          #ADAM:
+         "LR_END": 5e-8, #SGE: 1e-6, 5e-7, *5e-8, 5e-9          #ADAM:
          "CIOU_LOSS_MULTIPLIER": 1.0 , # *1.0, 2.0
          #for 640
          "WARMUP_EPOCHS": 5, #40  # or None
@@ -211,6 +213,7 @@ MODEL = {#"ANCHORS":[[(1.25, 1.625), (2.0, 3.75), (4.125, 2.875)],  # Anchors fo
          "BACKBONE": "ResNeSt", # ResNeSt | CSPDarknet
          "STRIDES":[4,8,16], # [4,8,16] for CSPDarknet; [4,8,16] for resnest # the last elements should == base_multiple
          "BASE_MULTIPLE":16, # == 2 ^ (#_stages in CSPDarknet)
+         "USE_SACONV": False, ## RESNEST finished, CSPDarknet not implemented yet (i.e. no usage)
 
          ## CSPDarknet related parameters
          "CSPDARKNET53_STEM_CHANNELS": 4, 
@@ -222,7 +225,7 @@ MODEL = {#"ANCHORS":[[(1.25, 1.625), (2.0, 3.75), (4.125, 2.875)],  # Anchors fo
          "RESNEST_STEM_WIDTH": 16, # similar to stem_channel, just a little bit different
          "RESNEST_EXPANSION": 2,  # orginal: 4 (higher -> less param)
          "RESNEST_FEATURE_CHANNELS": (24, 64, 128), # length == #_stages-1 == 3
-         "RESNEST_BLOCKS_PER_STAGE": (3 ,4, 6, 3), # length == #_stages == 4
+         "RESNEST_BLOCKS_PER_STAGE": (2 ,3, 3, 3), # length == #_stages == 4
          "RESNEST_STRIDE_PER_LAYER": (1, 2, 2)
          }
 

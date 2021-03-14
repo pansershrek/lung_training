@@ -92,13 +92,15 @@ def _BuildResNeSt3D(in_channel, weight_path=None, resume=False, used_for_yolo=Tr
     stem_width = cfg.MODEL["RESNEST_STEM_WIDTH"] # orginal: 32
     blocks_per_stage = cfg.MODEL["RESNEST_BLOCKS_PER_STAGE"] # Resnet50 original: (3, 4, 6, 3)
     stride_per_layer = cfg.MODEL["RESNEST_STRIDE_PER_LAYER"] # original: (2,2,2)
+    use_SAConv = cfg.MODEL["USE_SACONV"]
 
     if debug:
         bottleneck_expansion = 2 #cfg.MODEL["RESNEST_EXPANSION"]
         feature_channels = (24, 64, 128)#cfg.MODEL["RESNEST_FEATURE_CHANNELS"] # original: (128, 256, 512)
         stem_width = 16 #cfg.MODEL["RESNEST_STEM_WIDTH"] # orginal: 32
-        blocks_per_stage = (3, 4, 6, 3) #cfg.MODEL["RESNEST_BLOCKS_PER_STAGE"] # Resnet50 original: (3, 4, 6, 3)
+        blocks_per_stage = (2,3,3,3) #cfg.MODEL["RESNEST_BLOCKS_PER_STAGE"] # Resnet50 original: (3, 4, 6, 3)
         stride_per_layer = (1, 2, 2)
+        use_SAConv = True
 
     if bottleneck_expansion == 4:  # expansion == 4 (original), it has 78W params, otherwise can try other expansion
         resnet_feature_channels = [i//Bottleneck.expansion for i in feature_channels] 
@@ -110,7 +112,7 @@ def _BuildResNeSt3D(in_channel, weight_path=None, resume=False, used_for_yolo=Tr
         resnet_feature_channels = feature_channels
     else:
         raise TypeError("Invalid bottleneck_expansion: {}".format(bottleneck_expansion))
-
+    
     model = ResNet(Bottleneck, blocks_per_stage,
                    radix=2, groups=1, bottleneck_width=64,
                    deep_stem=True, avg_down=True,
@@ -120,6 +122,7 @@ def _BuildResNeSt3D(in_channel, weight_path=None, resume=False, used_for_yolo=Tr
                    stem_width=stem_width, # original: 32
                    feature_channels=resnet_feature_channels, # original: (128,256,512)
                    stride_per_layer=stride_per_layer, # original: (2,2,2)
+                   use_SAConv=use_SAConv,
                    )
 
     if debug: # debug
@@ -144,7 +147,7 @@ def _BuildResNeSt3D(in_channel, weight_path=None, resume=False, used_for_yolo=Tr
 
 if __name__ == "__main__":
     from memory_limiting import main as memory_limiting
-    device = "cuda"
+    device = "cpu"
     if device == "cpu": # NEVER REMOVE THIS LINE, OR THE PC MAY STUCK
         memory_limiting(15*1000) 
     _BuildResNeSt3D(1, debug=True, debug_device=device)
