@@ -10,7 +10,7 @@ import utils_hsz
 import config.yolov4_config as cfg
 #import config.yolov4_config as cfg
 
-def fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k=3, check_gt=False, batch_1_eval=False, fix_spacing=(0,0,0), use_lung_voi=False):
+def fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k=3, check_gt=False, batch_1_eval=False, fix_spacing=(0,0,0), use_lung_voi=False, use_5mm=False, load_5mm_pkl=False):
     """
     evaluate predictiob result based on...
     1. predicted bbox npy
@@ -54,6 +54,8 @@ def fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k=3, check_gt=False
             dataset.get_data(dataset.pids)
             dataset.set_batch_1_eval(batch_1_eval, fix_spacing)
             dataset.set_lung_voi(use_lung_voi)
+            if use_5mm:
+                dataset.set_5mm(use_5mm, load_5mm_pkl=load_5mm_pkl)
             for i, datum in enumerate(dataset.data):
                 if datum[2]==str(pid):
                     key=i
@@ -113,7 +115,10 @@ if __name__ == "__main__":
     batch_1_eval = True
     npy_name = None
     use_lung_voi = True
-    exp_name = "train_rc_config_4_fp_pool_f3"
+    exp_name = "train_fake_1.25mm_config_1_f3" #"train_rc_config_5.6.4_resnest_shallower_f0_fake_1.25_testing"
+    fix_spacing = (1.25, 0.75, 0.75)
+    use_5mm = True
+    load_5mm_pkl = "fast_test_max_5.0x0.75x0.75.pkl"
 
     ## validation
     npy_dir_path = pjoin("checkpoint", exp_name, "evaluate")
@@ -121,13 +126,14 @@ if __name__ == "__main__":
     ## testing (draw_froc.py)
     #exp_name += "_train_debug"
     #exp_name += "_testing"
-    #epoch = 306
+    #epoch = 187
     #npy_dir_path = pjoin("preidction", exp_name, str(epoch), "evaluate")
+    #npy_dir_path = pjoin("preidction", exp_name, str(epoch)+"_conf0.015", "evaluate")
 
     pids = os.listdir(npy_dir_path)
     #pids = [""]
     for fname in pids:
         pid = fname.split("_test")[0]
         print("pid:", pid)
-        fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k, check_gt=True, batch_1_eval=batch_1_eval, fix_spacing=fix_spacing, use_lung_voi=use_lung_voi)
+        fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k, check_gt=True, batch_1_eval=batch_1_eval, fix_spacing=fix_spacing, use_lung_voi=use_lung_voi, use_5mm=use_5mm, load_5mm_pkl=load_5mm_pkl)
 

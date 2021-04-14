@@ -86,8 +86,12 @@ class YOLO4_3DDataset(Dataset):
             d, h, w = img_size
             c = img.size()[3]
             ### IF ANY DIMENSION % 8 !=0, PAD -1 TO AVOID ERROR IN FORWARD
+            use_5mm = cfg.TRAIN["USE_5MM"]
             def trans(x, base=cfg.MODEL["BASE_MULTIPLE"]):
-	            return x + base - x%base if x%base else x
+                out = x + base - x%base if x%base else x
+                if use_5mm and out<32:
+                    out = 32
+                return out
             shape_before_pad = torch.tensor([d,h,w], dtype=torch.float32)
             new_d, new_h, new_w = trans(d), trans(h), trans(w)
             pad_img = torch.zeros((new_d,new_h,new_w,c), dtype=torch.float32) 
@@ -314,6 +318,8 @@ class YOLO4_3DDataset(Dataset):
 
                 zind, yind, xind = np.floor(bbox_yxhw_scaled[best_detect, 0:3]).astype(np.int32)
 
+                if zind == label[best_detect].shape[0]: # if zind >= label.shape[z] (>= or ==都可以) (to avoid error)
+                    zind -= 1
                 label[best_detect][zind, yind, xind, best_anchor, 0:6] = bbox_yxhw
                 label[best_detect][zind, yind, xind, best_anchor, 6:7] = 1.0
                 label[best_detect][zind, yind, xind, best_anchor, 7:8] = bbox_mix

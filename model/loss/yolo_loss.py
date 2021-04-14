@@ -225,6 +225,9 @@ class YoloV4Loss(nn.Module):
             loss_conf = (label_obj_mask * FOCAL(input=p_conf, target=label_obj_mask) +
                     label_noobj_mask * FOCAL(input = 1-p_conf, target=label_noobj_mask)) * label_mix
         else: # WIP: top k hard negative (grid/bbox) mining 
+            """
+            topk hard negative minin (poor performance)
+            """
             # p_conf of shape (B, Grid,Grid,Grid, Anchor, 1)
             top_k = 2  # how many hardest neg grid involved in calculating loss_conf
             pos_weight = None
@@ -258,6 +261,7 @@ class YoloV4Loss(nn.Module):
 
         # loss classes
         loss_cls = label_obj_mask * BCE(input=p_cls, target=label_cls) * label_mix
+
 
 
         loss_ciou = (torch.sum(loss_ciou)) / batch_size

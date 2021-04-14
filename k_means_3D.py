@@ -117,4 +117,4 @@ def _test():
 if __name__ == "__main__":
     #_test()
     for i in range(1):
-        get_anchors("random_crop_128x128x128_1.25x0.75x0.75", k=9)
+        get_anchors("random_crop_16x128x128_5.0x0.75x0.75", k=9)

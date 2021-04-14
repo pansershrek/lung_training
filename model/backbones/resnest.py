@@ -93,6 +93,7 @@ def _BuildResNeSt3D(in_channel, weight_path=None, resume=False, used_for_yolo=Tr
     blocks_per_stage = cfg.MODEL["RESNEST_BLOCKS_PER_STAGE"] # Resnet50 original: (3, 4, 6, 3)
     stride_per_layer = cfg.MODEL["RESNEST_STRIDE_PER_LAYER"] # original: (2,2,2)
     use_SAConv = cfg.MODEL["USE_SACONV"]
+    extra_attention = cfg.MODEL["RESNEST_EXTRA_ATTENTION"]
 
     if debug:
         bottleneck_expansion = 2 #cfg.MODEL["RESNEST_EXPANSION"]
@@ -101,6 +102,7 @@ def _BuildResNeSt3D(in_channel, weight_path=None, resume=False, used_for_yolo=Tr
         blocks_per_stage = (2,3,3,3) #cfg.MODEL["RESNEST_BLOCKS_PER_STAGE"] # Resnet50 original: (3, 4, 6, 3)
         stride_per_layer = (1, 2, 2)
         use_SAConv = True
+        extra_attention = None
 
     if bottleneck_expansion == 4:  # expansion == 4 (original), it has 78W params, otherwise can try other expansion
         resnet_feature_channels = [i//Bottleneck.expansion for i in feature_channels] 
@@ -123,6 +125,7 @@ def _BuildResNeSt3D(in_channel, weight_path=None, resume=False, used_for_yolo=Tr
                    feature_channels=resnet_feature_channels, # original: (128,256,512)
                    stride_per_layer=stride_per_layer, # original: (2,2,2)
                    use_SAConv=use_SAConv,
+                   extra_attention=extra_attention,
                    )
 
     if debug: # debug
@@ -132,10 +135,10 @@ def _BuildResNeSt3D(in_channel, weight_path=None, resume=False, used_for_yolo=Tr
         model =  model.to(device)
         model.eval()
 
-        t_shape = [[1, 128,128,128]] # not including batch_size
-        summary(model, t_shape, device=device)
-        #t = torch.randn((1,1,400,512,512), device=device)
-        t = torch.randn((1,1,128,128,128), device=device)
+        #t_shape = [[1, 128,128,128]] # not including batch_size
+        #summary(model, t_shape, device=device)
+        t = torch.randn((1,1,256,512,512), device=device)
+        t = torch.randn((1,1,32,128,128), device=device)
         out = model(t)
         print("Output:", *[f.shape for f in out])
         #print("Feature channels:", model.feature_channels[-3:])
@@ -147,9 +150,9 @@ def _BuildResNeSt3D(in_channel, weight_path=None, resume=False, used_for_yolo=Tr
 
 if __name__ == "__main__":
     from memory_limiting import main as memory_limiting
-    device = "cpu"
+    device = "cuda"
     if device == "cpu": # NEVER REMOVE THIS LINE, OR THE PC MAY STUCK
-        memory_limiting(15*1000) 
+        memory_limiting(15*1000)  # 15*1000 means 15GB
     _BuildResNeSt3D(1, debug=True, debug_device=device)
 
     

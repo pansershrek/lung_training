@@ -9,6 +9,8 @@ except:
 
 sys.path.append("D:/CH/LungDetection/training/detectoRS/D3Dnet/code/dcn/functions")
 from deform_conv_func import deform_conv_3d
+sys.path.append("D:/CH/LungDetection/training/config")
+import yolov4_config as cfg
 
 
 class SAConv2d(ConvAWS2d):
@@ -145,7 +147,7 @@ class SAConv3d(ConvAWS3d):
                  dilation=1,
                  groups=1,
                  bias=True,
-                 use_deform=False):
+                 use_deform=cfg.MODEL["SACONV_USE_DEFORM"]):
         super().__init__(
             in_channels,
             out_channels,
@@ -262,16 +264,17 @@ class SAConv3d(ConvAWS3d):
 if __name__ == "__main__":
     device = "cuda"
     if (1):
-        conv = SAConv3d(1, 3, 3, padding=1, use_deform=True).to(device)
+        conv = SAConv3d(1, 3, 3, padding=1).to(device)
         criterion = torch.nn.MSELoss()
         optimizer = torch.optim.Adam(conv.parameters())
         for i in range(5):
-            t = torch.randn((2,1,10,10,10), device=device)
+            t = torch.ones((1,1,10,128,128), device=device)
             out = conv(t)
             loss = criterion(out, torch.cat([t]*3, dim=1))
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            print(loss)
     if (0):
         conv = SAConv2d(1, 3, 3, padding=1)
         criterion = torch.nn.MSELoss()

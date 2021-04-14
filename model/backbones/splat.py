@@ -45,10 +45,10 @@ class SplAtConv3d(Module):
         if self.use_bn:
             self.bn0 = norm_layer(channels*radix)
         self.relu = ReLU(inplace=True)
-        self.fc1 = default_conv(channels, inter_channels, 1, groups=self.cardinality)
+        self.fc1 = Conv3d(channels, inter_channels, 1, groups=self.cardinality)
         if self.use_bn:
             self.bn1 = norm_layer(inter_channels)
-        self.fc2 = default_conv(inter_channels, channels*radix, 1, groups=self.cardinality)
+        self.fc2 = Conv3d(inter_channels, channels*radix, 1, groups=self.cardinality)
         if dropblock_prob > 0.0:
             raise NotImplementedError("DropBlock not implemented")
             self.dropblock = DropBlock3D(dropblock_prob, 3)

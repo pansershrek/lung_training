@@ -9,6 +9,7 @@ from tqdm import tqdm
 import pickle
 from PIL import Image
 import logging
+import warnings
 
 
 from dataset import Tumor, LungDataset
@@ -19,6 +20,7 @@ from trainer import Trainer
 from utils.log import Logger
 from global_variable import CURRENT_DATASET_PKL_PATH, NEGATIVE_NPY_SAVED_PATH
 from utils_ccy import linear_normalization
+from utils_hsz import AnimationViewer
 
 
 def make_negative_samples(save_crop, ncopy=1):
@@ -35,18 +37,18 @@ def make_negative_samples(save_crop, ncopy=1):
     if save_crop and not os.path.exists(NEGATIVE_NPY_SAVED_PATH):
         os.makedirs(NEGATIVE_NPY_SAVED_PATH, exist_ok=True)
 
-    for exp_name, fold_num in [
+    for exp_name, fold_num, epoch in [
 
-        ('train_rc_config_3_f0', 0),
-        #('train_rc_config_3_f1', 1),
-        #('train_rc_config_3_f2', 2),
-        #('train_rc_config_3_f3', 3),
-        #('train_rc_config_3_f4', 4),
-
+        ('train_fake_1.25mm_no_fp_reduction_dry_run_f0', 0, 170),
+        ('train_fake_1.25mm_no_fp_reduction_dry_run_f1', 1, 272),
+        ('train_fake_1.25mm_no_fp_reduction_dry_run_f2', 2, 204),
+        ('train_fake_1.25mm_no_fp_reduction_dry_run_f3', 3, 289),
+        ('train_fake_1.25mm_no_fp_reduction_dry_run_f4', 4, 170),
+   
         ]:
 
         testing_mode = 0 # use eval here to avoid repeat calculations
-        epoch = 323
+        #epoch = 220
         fake_batch_size = 32 # need this to prevent accumulating fp crops in RAM
         eval_conf_thresh = 0.015
 
@@ -89,30 +91,45 @@ def make_negative_samples(save_crop, ncopy=1):
                     eval_conf_thresh=eval_conf_thresh,
                     )
 
+            # force do fp reduction
             #area_dist, area_iou, plt, _, cpm_dist, cpm, max_sens_dist, max_sens_iou = trainer.evaluate()
-            #target_pids = list({pid for _,_,pid in trainer.test_dataset.ori_dataset.data})
-            target_pids = ["25607996"]
+            if (0): #smaller pid set
+                target_pids = ["25607996"]
+            else: # the whole pid set
+                target_pids = list({pid for _,_,pid in trainer.test_dataset.ori_dataset.data})
+            
             remained_pids = target_pids.copy()
             n_batches = len(target_pids)//fake_batch_size + 1
             tqdm_bar = tqdm(total=n_batches, desc=f"Making fp fold {fold_num}")
             while len(remained_pids)!=0:
                 pids = remained_pids[:fake_batch_size]
                 remained_pids = remained_pids[fake_batch_size:]
-                for c in range(ncopy):
-                    out_imgs, out_bboxes, out_names = trainer.get_fp_for_reduction_batch(pids, return_crop_only=True)
+                #for c in range(ncopy):
+                if (1):
+                    out_imgs, out_bboxes, out_names = trainer.get_fp_for_reduction_batch(pids, return_crop_only=True, topk=ncopy)
                     ## saving crops
                     
-                    for img, bboxes, pid in zip(out_imgs, out_bboxes, out_names):
+                    for c_raw, (img, bboxes, pid) in enumerate(zip(out_imgs, out_bboxes, out_names)):
                         to_save = (img, bboxes)
-                        folder_name = os.path.join(NEGATIVE_NPY_SAVED_PATH, str(pid))
+                        folder_name = os.path.join(NEGATIVE_NPY_SAVED_PATH, "{}".format(pid))
                         if save_crop and not os.path.exists(folder_name):
                             os.makedirs(folder_name, exist_ok=True)
-                        pkl_name = os.path.join(folder_name, f"false_positive_c{c+1}.pkl")
+                        c = c_raw%ncopy + 1
+                        if (0): #debug_view
+                            AnimationViewer(img, bboxes, note=f"{pid} crop{c}")
+                        if c==1:
+                            current_pid = pid
+                        elif pid != current_pid:
+                            warnings.warn(f"Alg Error: pid={current_pid} has only {c-1} copy, whike ncopy={ncopy}")
+                            current_pid = pid
+                            c=1
+                            
+                        pkl_name = os.path.join(folder_name, f"false_positive_fake_1.25_from_5mm_max_c{c}.pkl")
                         if save_crop:
                             with open(pkl_name, "wb") as f:
                                 pickle.dump(to_save, f)
                                 print("save to", pkl_name)
-                            save_slices_png(img, pjoin(folder_name, f"slices_view_c{c+1}"))
+                            save_slices_png(img, pjoin(folder_name, f"slices_view_fake_1.25_from_5mm_max_c{c}"))
                 tqdm_bar.update()
 
 
@@ -218,5 +235,6 @@ def make_negative_samples_for_luna():
 
 
 if __name__ == "__main__":
-    make_negative_samples(save_crop=True, ncopy=3)
+    # please enable "do fp reduction" in cfg before running this
+    make_negative_samples(save_crop=True, ncopy=5)
 

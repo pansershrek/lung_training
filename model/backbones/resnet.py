@@ -19,6 +19,7 @@ except (ImportError, ModuleNotFoundError):
 import sys
 sys.path.append("D:/CH/LungDetection/training/detectoRS/mmdet/ops")
 from saconv import SAConv3d
+from model.layers.attention_layers import SEModule, SEModule_Conv, CBAM
 
 __all__ = ['ResNet', 'Bottleneck']
 
@@ -44,16 +45,26 @@ class Bottleneck(nn.Module):
                  avd=False, avd_first=False, dilation=1, is_first=False,
                  rectified_conv=False, rectify_avg=False,
                  norm_layer=None, dropblock_prob=0.0, last_gamma=False,
-                 use_SAConv=False):
+                 use_SAConv=False,
+                 extra_attention=None):
         super(Bottleneck, self).__init__()
         group_width = int(planes * (bottleneck_width / 64.)) * cardinality
-        default_conv = SAConv3d if use_SAConv else nn.Conv3d
-        self.conv1 = default_conv(inplanes, group_width, kernel_size=1, bias=False)
+        default_conv = SAConv3d if use_SAConv else nn.Conv3d # use SAConv3d only for kernel_size = 3
+        self.conv1 = nn.Conv3d(inplanes, group_width, kernel_size=1, bias=False)
         self.bn1 = norm_layer(group_width)
         self.dropblock_prob = dropblock_prob
         self.radix = radix
         self.avd = avd and (stride > 1 or is_first)
         self.avd_first = avd_first
+
+        # extra attention
+        self.attention = extra_attention
+        out_channels = planes * self.expansion
+        if self.attention == 'SEnet':self.attention_module = SEModule(out_channels, dims=3, reduction=16) # lower reduction to avoid OOM during testing
+        elif self.attention == 'SEnetConv':self.attention_module = SEModule_Conv(out_channels, dims=3, reduction=16)
+        elif self.attention == 'CBAM':self.attention_module = CBAM(out_channels, dims=3)
+        else: self.attention = None
+
         if self.avd:
             self.avd_layer = nn.AvgPool3d(3, stride, padding=1)
             stride = 1
@@ -73,7 +84,7 @@ class Bottleneck(nn.Module):
                 rectify_avg=rectify_avg,
                 norm_layer=norm_layer,
                 dropblock_prob=dropblock_prob,
-                use_SAConv=False) # ccy: True may cause error
+                use_SAConv=False) # ccy: True has super low cpm
         elif rectified_conv:
             raise NotImplementedError("Rectified convolution not implemented")
             from rfconv import RFConv2d
@@ -90,7 +101,7 @@ class Bottleneck(nn.Module):
                 groups=cardinality, bias=False)
             self.bn2 = norm_layer(group_width)
 
-        self.conv3 = default_conv(
+        self.conv3 = nn.Conv3d(
             group_width, planes * self.expansion, kernel_size=1, bias=False)
         self.bn3 = norm_layer(planes*self.expansion)
 
@@ -128,6 +139,9 @@ class Bottleneck(nn.Module):
         out = self.bn3(out)
         if self.dropblock_prob > 0.0:
             out = self.dropblock3(out)
+
+        if self.attention is not None:
+            out = self.attention_module(out)
 
         if self.downsample is not None:
             residual = self.downsample(x)
@@ -175,6 +189,7 @@ class ResNet(nn.Module):
                  feature_channels=(128, 256, 512), # original
                  stride_per_layer=(2, 2, 2), # original
                  use_SAConv=False, #ccy
+                 extra_attention=None, #ccy
                  ):
         self.cardinality = groups
         self.bottleneck_width = bottleneck_width
@@ -192,6 +207,8 @@ class ResNet(nn.Module):
         self.in_channel = in_channel
         ##self.stem_channel = stem_width
         self.feature_channels = feature_channels
+        self.use_SAConv = use_SAConv
+        self.extra_attention = extra_attention
 
         super(ResNet, self).__init__()
         self.rectified_conv = rectified_conv
@@ -218,13 +235,14 @@ class ResNet(nn.Module):
                 conv_layer(stem_width, stem_width*2, kernel_size=3, stride=1, padding=1, bias=False, **conv_kwargs),
             )
         else:
-            self.conv1 = conv_layer(in_channel, stem_width, kernel_size=7, stride=2, padding=3,
+            # 7*7*7 conv no need SAConv3d
+            self.conv1 = nn.Conv3d(in_channel, stem_width, kernel_size=7, stride=2, padding=3,
                                    bias=False, **conv_kwargs)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool3d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, stem_width, layers[0], norm_layer=norm_layer, is_first=False)
-        self.layer2 = self._make_layer(block, feature_channels[0], layers[1], stride=stride_per_layer[0], norm_layer=norm_layer)
+        self.layer1 = self._make_layer(block, stem_width, layers[0], norm_layer=norm_layer, is_first=False, extra_attention=self.extra_attention)
+        self.layer2 = self._make_layer(block, feature_channels[0], layers[1], stride=stride_per_layer[0], norm_layer=norm_layer, extra_attention=self.extra_attention)
         if dilated or dilation == 4:
             self.layer3 = self._make_layer(block, feature_channels[1], layers[2], stride=1,
                                            dilation=2, norm_layer=norm_layer,
@@ -292,7 +310,7 @@ class ResNet(nn.Module):
                 print("initing {}".format(m))   
 
     def _make_layer(self, block, planes, blocks, stride=1, dilation=1, norm_layer=None,
-                    dropblock_prob=0.0, is_first=True):
+                    dropblock_prob=0.0, is_first=True, extra_attention=None):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             down_layers = []
@@ -303,10 +321,10 @@ class ResNet(nn.Module):
                 else:
                     down_layers.append(nn.AvgPool3d(kernel_size=1, stride=1,
                                                     ceil_mode=True, count_include_pad=False))
-                down_layers.append(self.conv_layer(self.inplanes, planes * block.expansion,
+                down_layers.append(nn.Conv3d(self.inplanes, planes * block.expansion,
                                              kernel_size=1, stride=1, bias=False))
             else:
-                down_layers.append(self.conv_layer(self.inplanes, planes * block.expansion,
+                down_layers.append(nn.Conv3d(self.inplanes, planes * block.expansion,
                                              kernel_size=1, stride=stride, bias=False))
             down_layers.append(norm_layer(planes * block.expansion))
             downsample = nn.Sequential(*down_layers)
@@ -322,6 +340,7 @@ class ResNet(nn.Module):
                                 norm_layer=norm_layer, dropblock_prob=dropblock_prob,
                                 last_gamma=self.last_gamma,
                                 use_SAConv=self.use_SAConv,
+                                extra_attention=extra_attention,
                                 ))
         elif dilation == 4:
             layers.append(block(self.inplanes, planes, stride, downsample=downsample,
@@ -333,6 +352,7 @@ class ResNet(nn.Module):
                                 norm_layer=norm_layer, dropblock_prob=dropblock_prob,
                                 last_gamma=self.last_gamma,
                                 use_SAConv=self.use_SAConv,
+                                extra_attention=extra_attention,
                                 ))
         else:
             raise RuntimeError("=> unknown dilation size: {}".format(dilation))
@@ -348,6 +368,7 @@ class ResNet(nn.Module):
                                 norm_layer=norm_layer, dropblock_prob=dropblock_prob,
                                 last_gamma=self.last_gamma,
                                 use_SAConv=self.use_SAConv,
+                                extra_attention=extra_attention,
                                 ))
 
         return nn.Sequential(*layers)

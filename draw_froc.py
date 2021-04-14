@@ -68,20 +68,35 @@ if __name__ == "__main__":
         #('train_rc_config_4_fp_pool_f3', 3, 204),
         #('train_rc_config_4_fp_pool_f4', 4, 187),
 
-        #('train_rc_config_5.3_more_param_ori_loss_f0', 0, 204),
-        ('train_rc_config_5.3_more_param_ori_loss_f3', 3, 187),
-        ('train_rc_config_5.3_more_param_ori_loss_f4', 4, 238),
+        # 5mm model inference on 1.25
+        #('train_rc_config_5.6.4_resnest_shallower_f0', 0, 187),
+        #('train_rc_config_5.6.5_resnest_shallower_f1', 1, 255),
+        #('train_rc_config_5.6_resnest+sgd_shallower_f2', 2, 187),
+        #('train_rc_config_5.6_resnest+sgd_shallower_f3', 3, 204),
+        #('train_rc_config_5.6.2_resnest_shallower_f4', 4, 221),
 
 
+        ('train_fake_1.25mm_config_1.4_f4', 4, 272),
+        ('train_fake_1.25mm_config_1.5_f4', 4, 204),
+
+
+        #('train_5mm_max_no_fp_reduction_dry_run_f0', 0, list(range(0,220,17))+[220]),
+        #('train_5mm_max_no_fp_reduction_dry_run_f1', 1, list(range(0,220,17))+[220]),
+        #('train_5mm_max_no_fp_reduction_dry_run_f2', 2, list(range(0,220,17))+[220]),
+        #('train_5mm_max_no_fp_reduction_dry_run_f3', 3, list(range(85+17,220,17))+[220]),
+        #('train_5mm_max_no_fp_reduction_dry_run_f4', 4, list(range(0,220,17))+[220]),
+
+        
         ]:
         eval_epochs = [eval_epochs] if (not hasattr(eval_epochs, "__len__")) else eval_epochs
         eval_conf_thresh = [0.015]  ## original: 0.015
         for testing_mode in [1]: #[0, 1, -1, -2]:
             #if testing_mode==0 and exp_name=='Fd0_BS2_Stem4_8_128_r2':
             #    continue
-            opt.exp_name = exp_name
-            #opt.exp_name = exp_name + "_lung_voi"
-            #opt.exp_name = exp_name
+            if (1):
+                opt.exp_name = exp_name
+                #opt.exp_name = exp_name + "_fake_1.25"
+                #opt.exp_name = exp_name
             logger = Logger(log_file_name=opt.log_path + '/log.txt', log_level=logging.DEBUG, logger_name='YOLOv4').get_log()
             checkpoint_root = 'checkpoint/' #'/home/lab402/p08922003/YOLOv4-pytorch/checkpoint/'
             checkpoint_folder = '{}{}'.format(checkpoint_root, exp_name)

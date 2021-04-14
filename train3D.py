@@ -57,10 +57,10 @@ if __name__ == "__main__":
 
     if (0):
         warnings.warn("Override opt settings in train3D.py!!!")
-        weight_path = r"D:/CH/LungDetection/training/checkpoint/train_rc_config_4_fp_pool_f0_take2_from136/backup_epoch204.pt"
-        resume = False
+        weight_path = r"checkpoint/train_5mm_max_no_fp_reduction_dry_run_f0/backup_epoch0.pt"
+        resume = True
         opt.crx_valid = 0
-        opt.eval_interval = 3
+        opt.eval_interval = 100
         #opt.exp_name = "train_rc_config_2_f0_fp_reduction_0,1"
         writer = SummaryWriter(log_dir=opt.log_path + '/' + opt.exp_name)
         logger = Logger(log_file_name=opt.log_path + '/' + opt.exp_name + '/log.txt', log_level=logging.DEBUG, logger_name='YOLOv4').get_log()

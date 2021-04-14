@@ -29,6 +29,7 @@ from dicom_reader import DicomReader
 from global_variable import LUNG_DATA_PATH, VOI_EXCEL_PATH, EXCLUDE_KEYWORDS, NPY_SAVED_PATH, CURRENT_DATASET_PKL_PATH, MASK_SAVED_PATH
 from random_crop import random_crop_preprocessing
 import config.yolov4_config as cfg
+from stacking_z_slices import stacking1D_average
 
 #raise NotImplementedError("Work in progress")
 
@@ -59,7 +60,7 @@ class Tumor():
             self.original_shape = (n_slice, 512, 512)
         else:
             self.original_shape = original_shape
-        print(pid, self.original_shape)
+        #print(pid, self.original_shape)
 
     def get_series(self, norm_hu=True):
         """
@@ -134,6 +135,10 @@ class LungDataset(Dataset):
         self.use_lung_voi = False # whether to use lung_voi as "general_output" instead of "the whole image"
         self.lung_voi_lut = {} # key:pid, value:voi
 
+        ## slice thickness related parameters
+        self.use_5mm = False
+        self.load_5mm_pkl = False
+
 
         df = self.voi_excel
         col_top_left_x, col_top_left_y, col_top_left_z = df.columns.get_loc("top_left_x"), df.columns.get_loc("top_left_y"), df.columns.get_loc("top_left_z")
@@ -161,6 +166,7 @@ class LungDataset(Dataset):
                     comments = comments.split("/")
                     for keyword in EXCLUDE_KEYWORDS:
                         if keyword in comments: # BAD row
+                            print("Discarding excel_r={}, due to keyword:'{}'".format(excel_r, keyword))
                             break
                     else: # rows with coordinate and comments not containing exclusive keywords
                         valid=True
@@ -229,7 +235,11 @@ class LungDataset(Dataset):
             lut = {pid:eval(voi) for pid, voi in (line.split(" ",1) for line in voi_txt.split("\n"))}  ## had tested many times
             self.lung_voi_lut = lut
 
-
+    def set_5mm(self, use_5mm=True, load_5mm_pkl=False):
+        assert (use_5mm in (True, False))
+        self.use_5mm = use_5mm
+        self.load_5mm_pkl = load_5mm_pkl
+        
 
     @classmethod
     def empty(cls):
@@ -247,6 +257,7 @@ class LungDataset(Dataset):
     def __getitem__(self, i): # for DataLoader
         if self.use_random_crop:
             if self.random_choose_one:
+                random.seed()
                 c = random.choice(range(self.random_crop_ncopy-1))
                 i = i
             else:
@@ -287,36 +298,66 @@ class LungDataset(Dataset):
                 print("pid={}, copy#={}".format(pid, c+1))
                 view_img = img.squeeze(-1).numpy()
                 view_box = [bbox[:6] for bbox in bboxes.tolist()]
-                utils_hsz.AnimationViewer(view_img, bbox=view_box, verbose=False, note=f"{pid}_{c+1}")
+                utils_hsz.AnimationViewer(view_img, bbox=view_box, verbose=True, note=f"{pid}_{c+1}", draw_face=False)
             return img, bboxes, pid
         else:
             npy_name, bboxs_ori, pid = self.data[i]
             tumor = self.tumors[self.pid_to_excel_r_relation[pid][0]]
             original_shape = tumor.original_shape
+            ori_spacing = tumor.dcm_reader.transform
             bboxes = bboxs_ori
             if npy_name==None: #using raw data
                 img, exist = self.cacher.get(pid)
                 if not exist: #not in cache
-                    img = self.get_series_by_pid(pid)  #已於dicom_reader.py處理過hu
-                    img = utils_hsz.normalize(img)
-                    if self.use_lung_voi:
-                        lung_voi = self.lung_voi_lut[pid]
-                        z1,y1,x1,z2,y2,x2 = lung_voi
-                        img = img[z1:z2+1, y1:y2+1, x1:x2+1]
-                        original_shape = img.shape ## voi shape
-                        new_bboxes = []
-                        for bbox in bboxes:
-                            oz1,oy1,ox1,oz2,oy2,ox2 = bbox[:6]
-                            bbox= [oz1-z1, oy1-y1, ox1-x1, oz2-z1, oy2-y1, ox2-x1, 1, 1] # shifting O from (0,0,0) to (z1,y1,x1)
-                            new_bboxes.append(bbox)
-                        bboxes = new_bboxes
-                    if self.batch_1_eval:
-                        dcm = tumor.dcm_reader
-                        transform = (dcm.SliceThickness, dcm.PixelSpacing[1], dcm.PixelSpacing[0]) #z,y,x
-                        target_transform = self.equal_spacing
-                        d, h, w = img.shape
-                        d_new, h_new, w_new = round(d*transform[0]/target_transform[0]), round(h*transform[1]/target_transform[1]), round(w*transform[2]/target_transform[2])
-                        img = utils.resize_without_pad(img, (d_new,h_new,w_new), "nearest")
+                    if self.use_5mm and self.load_5mm_pkl: # loading preprocessed 5mm npy 
+                        assert self.batch_1_eval
+
+                        pkl_name = self.load_5mm_pkl
+                        assert type(pkl_name) == str
+                        pkl_path = os.path.join(NPY_SAVED_PATH, pid, pkl_name)
+                        with open(pkl_path, "rb") as f:
+                            img, bboxes = pickle.load(f)
+                        original_shape = img.shape
+                        n = bboxes.shape[0]
+                        bboxes = np.concatenate([bboxes, np.ones((n,2))], axis=1).tolist() # (n,6) -> (n,8)
+                        if self.equal_spacing[0] != 5.0: # 5.0 -> 1.25 (fake 1.25)
+                            d, h, w = img.shape
+                            d_new, h_new, w_new = round(d*5.0/self.equal_spacing[0]), round(h*0.75/self.equal_spacing[1]), round(w*0.75/self.equal_spacing[2])
+                            img = utils.resize_without_pad(img, (d_new,h_new,w_new), "trilinear", align_corners=False)
+
+
+
+                    else: # freshly making test_npy
+                        img = self.get_series_by_pid(pid)  #已於dicom_reader.py處理過hu
+                        img = utils_hsz.normalize(img)
+
+                        if self.use_lung_voi: # crop VOI
+                            lung_voi = self.lung_voi_lut[pid]
+                            z1,y1,x1,z2,y2,x2 = lung_voi
+                            img = img[z1:z2+1, y1:y2+1, x1:x2+1]
+                            original_shape = img.shape ## voi shape
+                            new_bboxes = []
+                            for bbox in bboxes:
+                                oz1,oy1,ox1,oz2,oy2,ox2 = bbox[:6]
+                                bbox= [oz1-z1, oy1-y1, ox1-x1, oz2-z1, oy2-y1, ox2-x1, 1, 1] # shifting O from (0,0,0) to (z1,y1,x1)
+                                new_bboxes.append(bbox)
+                            bboxes = new_bboxes
+                        
+                        if self.use_5mm: # to 5 mm
+                            target_spacing = list(ori_spacing).copy()
+                            target_spacing[0] = 5.0  ## change z-spacing to 5.0
+                            img, new_spacing, bboxes = stacking1D_average(img, 0, ori_spacing, target_spacing, bboxes, stack_func=cfg.VAL["5MM_STACKING_STRATEGY"])
+                            tumor.SliceThickness = new_spacing[0]
+                            tumor.PixelSpacing = (new_spacing[1], new_spacing[0])
+                            original_shape = img.shape ## 5mm voi shape
+                            ori_spacing = new_spacing
+                        
+                        if self.batch_1_eval: # adjust pixel spacing to self.equal_spacing
+                            transform = ori_spacing
+                            target_transform = self.equal_spacing
+                            d, h, w = img.shape
+                            d_new, h_new, w_new = round(d*transform[0]/target_transform[0]), round(h*transform[1]/target_transform[1]), round(w*transform[2]/target_transform[2])
+                            img = utils.resize_without_pad(img, (d_new,h_new,w_new), "nearest")
                     self.cacher.set(pid, img)
             else: #using npys
                 img, exist = self.cacher.get(pid)
@@ -334,7 +375,7 @@ class LungDataset(Dataset):
                 print("pid={}, original_shape='{}', target_shape='{}', bboxs_ori='{}', bboxs_scaled='{}'".format(pid, original_shape, target_shape, bboxs_ori, bboxs_scaled))
                 view_img = img.squeeze(-1).numpy()
                 view_box = [bbox[:6] for bbox in bboxs_scaled.tolist()]
-                utils_hsz.AnimationViewer(view_img, bbox=view_box, verbose=False, note=f"{pid}")
+                utils_hsz.AnimationViewer(view_img, bbox=view_box, verbose=False, note=f"{pid}", draw_face=False)
             return img, bboxs_scaled, pid
             
             
@@ -989,12 +1030,15 @@ def _test_kfold(data_augmentation):
 
     
 
-def construct_dataset():
+def construct_dataset(suffix=""):
     dataset = LungDataset()
     def get_date_str(date=datetime.today()):
         return "{}{:02}{:02}".format(date.year, date.month, date.day)
     today_str = get_date_str()
-    dataset.save("lung_dataset_{}.pkl".format(today_str))
+    if len(suffix)!=0:
+        today_str += "_" + suffix
+    outname = "lung_dataset_{}.pkl".format(today_str)
+    dataset.save(outname)
     return dataset
     
 def preprocessed_all(overwrite_npy, force_reconstruct, model_input_shape, output_name, pad_mode="center", pad_cval=0, resize_before_pad=True, debug=False):
@@ -1016,17 +1060,17 @@ def preprocessed_all(overwrite_npy, force_reconstruct, model_input_shape, output
     
 if __name__ == "__main__":
     #_test()
-    construct_dataset()
+    construct_dataset(suffix="5mm_mean_exclude_both")
     raise EOFError
     #dataset = LungDataset.load(CURRENT_DATASET_PKL_PATH)
-    preprocessed_all(overwrite_npy=True, 
+    """preprocessed_all(overwrite_npy=True, 
                     force_reconstruct=False, 
                     model_input_shape=(256,256,256),
                     output_name="hu+norm_256x256x256.npy",  
                     pad_mode="center", 
                     pad_cval = 0,
                     resize_before_pad=False,
-                    debug=False)
+                    debug=False)"""
 
     """preprocessed_all(overwrite_npy=True, 
                     force_reconstruct=False, 

@@ -13,16 +13,17 @@ class AnimationViewer(object):
     Modified to support scrolling and adding bbox
     bbox is of format [z1,y1,x1,z2,y2,x2]
     """
-    def __init__(self, volume, bbox=None, verbose=True, note=""):
+    def __init__(self, volume, bbox=None, verbose=True, note="", draw_face=True):
         self.image = volume
-        self.bbox=bbox  if bbox!=None else ()
+        self.draw_face = draw_face
+        self.bbox=bbox  if type(bbox)!=type(None) else ()
         self.pixel_min = np.min(volume)
         self.pixel_max = np.max(volume)
         self.volume_shape = volume.shape
         self.note = f"{note}: " if note !="" else ""
         print(f'shape={self.image.shape} maxvalue={self.pixel_max} minvalue={self.pixel_min}')
         if verbose:
-            print(f"bbox: {bbox}")
+            print(f"bbox (viewer): {bbox}")
         self.multi_slice_viewer()
 
     def previous_slice(self, ax):
@@ -63,15 +64,15 @@ class AnimationViewer(object):
     def add_bbox(self, ax):
         if type(self.bbox)!=np.ndarray and self.bbox == None:
             return
-        elif type(self.bbox)==np.ndarray:
-            boxes = [self.bbox]
+        #elif type(self.bbox)==np.ndarray:
+        #    boxes = [self.bbox]
         else:
             boxes = self.bbox
         for box in boxes:
             z1,y1,x1,z2,y2,x2 = box
             if z1 <= ax.index <= z2:
                 w, h = x2-x1, y2-y1
-                if ax.index in [z1,z2]:
+                if self.draw_face and (ax.index in [z1,z2]):
                     rect = Rectangle((x1,y1), w, h, linewidth=1,edgecolor='r',facecolor='r')
                 else:
                     rect = Rectangle((x1,y1), w, h, linewidth=1,edgecolor='r',facecolor='none')

@@ -14,6 +14,7 @@ import warnings
 from utils_hsz import AnimationViewer
 import utils_hsz
 import utils_ccy
+from stacking_z_slices import stacking1D_average
 from global_variable import NPY_SAVED_PATH, CURRENT_DATASET_PKL_PATH
 
 def intersect(boxes1, boxes2, dim):
@@ -92,6 +93,7 @@ def random_crop_3D(image, boxes, min_shape=None, max_shape=None):
     #for box in boxes:
     for _ in range(len(boxes)):
         box = random.choice(boxes)
+        #print("Using bbox:", box)
         ori_z1, ori_y1, ori_x1, ori_z2, ori_y2, ori_x2 = box.clone()
         ori_box_d, ori_box_h, ori_box_w = ori_z2-ori_z1, ori_y2-ori_y1, ori_x2-ori_x1
         #Center of bounding boxes
@@ -130,7 +132,7 @@ def random_crop_3D(image, boxes, min_shape=None, max_shape=None):
             if (1): # keep bbox away from border
                 away_x = 10 # unit: pixel
                 away_y = 10
-                away_z = 10
+                away_z = 0
                 x_max = original_w-1-new_w if original_w-1-new_w >=0 else 0
                 y_max = original_h-1-new_h if original_h-1-new_h >=0 else 0
                 z_max = original_d-1-new_d if original_d-1-new_d >=0 else 0
@@ -138,7 +140,10 @@ def random_crop_3D(image, boxes, min_shape=None, max_shape=None):
                 right = left + new_w
                 top =  random.uniform( max(min(ori_y1+ori_box_h-new_h+away_y, y_max), 0), min(max(ori_y1-away_y,0), y_max) )
                 bottom = top + new_h
-                z1 =   random.uniform( max(min(ori_z1+ori_box_d-new_d+away_z, z_max), 0), min(max(ori_z1-away_z,0), z_max) )
+                if new_d*2 >= ori_box_d: # if True, ensure center_bb in crop 
+                    z1 =   random.uniform( max(min(ori_z1+ori_box_d-new_d+away_z, z_max), 0), min(max(ori_z1-away_z,0), z_max) )
+                else:
+                    z1 =   random.uniform( max(min(ori_z1+ori_box_d/2+away_z, z_max), 0), min(max(ori_z1+ori_box_d/2-new_d/2-away_z,0), z_max) )
                 z2 = z1 + new_d
             try:
                 assert 0<=left<=right<=original_w
@@ -183,15 +188,23 @@ def random_crop_3D(image, boxes, min_shape=None, max_shape=None):
                 pad_img[:,:d,:h,:w] = new_image
                 new_image = pad_img
             #Center of bounding boxes
-            center_in_crop = (z2 > center_bb[0] > z1) * \
-                                (bottom > center_bb[1] > top) * \
-                                (right > center_bb[2] > left)   #( #objects==1 )
+            center_in_crop = (int(z2) > center_bb[0] > int(z1)) * \
+                                (int(bottom) > center_bb[1] > int(top)) * \
+                                (int(right) > center_bb[2] > int(left))   #( #objects==1 )
             ###print("center_in_crop", center_in_crop)
             if center_in_crop:
-                center_in_crop = center_in_crop.unsqueeze(0)
+                #center_in_crop = center_in_crop.unsqueeze(0)
                 break
             else:
-                raise TypeError("Algorithm Error: the random cropped voi doesn't include the original voi center\n ori_center:{}\ncropped:{}".format(
+                # untight but acceptable condition
+                center_in_crop_2  = (int(z2)+1 > center_bb[0] > int(z1)-1) * \
+                                (int(bottom)+1 > center_bb[1] > int(top)-1) * \
+                                (int(right)+1 > center_bb[2] > int(left)-1)
+                if center_in_crop_2:
+                    warnings.warn("Border condition in random crop; the random cropped voi doesn't include the original voi center\n ori_center:{}\ncropped:{}".format(
+                                    center_bb, [int(z1), int(top), int(left), int(z2), int(bottom), int(right)]))
+                else:
+                    raise TypeError("Algorithm Error: the random cropped voi doesn't include the original voi center\n ori_center:{}\ncropped:{}".format(
                                     center_bb, [int(z1), int(top), int(left), int(z2), int(bottom), int(right)]))
             
         
@@ -200,29 +213,35 @@ def random_crop_3D(image, boxes, min_shape=None, max_shape=None):
         new_boxes = boxes.clone()
         #print("After clone:", new_boxes)
         
-        #Use the box left and top corner or the crop's 
-        new_boxes[:, :3] = torch.max(new_boxes[:, :3], crop[:3])
-        #print("after torch max:", new_boxes)
         
         #adjust to crop (原點變換，從原圖(0,0)到原圖bbox左上角)
         new_boxes[:, :3] -= crop[:3]
         #print("After subtract crop[:3] 1:", new_boxes)
-        
-        new_boxes[:, 3:] = torch.min(new_boxes[:, 3:],crop[3:])
-        #print("After torch min:", new_boxes)
-        
+
         #adjust to crop (原點變換，從原圖(0,0)到原圖bbox左上角)
         new_boxes[:, 3:] -= crop[:3]
         #print("After subtract crop[:3] 2:", new_boxes)
-        new_boxes.squeeze_(0)
+        #new_boxes.squeeze_(0)
         ###print("NEW BOXES",new_boxes)
+        
+        #Use the box left and top corner or the crop's 
+        new_boxes[:, :3] = torch.max(new_boxes[:, :3], crop[:3]-crop[:3])
+        #print("after torch max:", new_boxes)
+                
+        new_boxes[:, 3:] = torch.min(new_boxes[:, 3:],crop[3:]-crop[:3])
+        #print("After torch min:", new_boxes)
+
         if new_boxes.ndim != 1 : # 2 or more bbox
             _, z_lim, y_lim, x_lim = new_image.shape
             tmp = []
             for box in new_boxes:
                 if (0<=box[0]<box[3]<=z_lim) and (0<=box[1]<box[4]<=y_lim) and (0<=box[2]<box[5]<=x_lim): # box must be in view
                     tmp.append(box)
-            new_boxes = torch.stack(tmp, dim=0)
+            if len(tmp)!=0:
+                new_boxes = torch.stack(tmp, dim=0)
+            else: # use all bbox
+                pass
+        
         out_vois.append(new_image)
         out_boxes.append(new_boxes)
         return out_vois, out_boxes  ## if want 1 voi per image
@@ -360,7 +379,7 @@ def random_crop_preprocessing(img, bboxes, transform, target_transform, target_i
     return out
 
                 
-def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape=(128,128,128), n_copy=10, save=False, device="cuda"):
+def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape=(128,128,128), n_copy=10, save=False, device="cuda", stack_before_process=False, load_fake_125=False):
     """ target_input_shape must be multiples of 32, otherwise it will be very complicated!!! """
     global Tumor, LungDataset
     from dataset import Tumor, LungDataset
@@ -372,26 +391,54 @@ def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape
     ## make sure the inputs are original images
     dataset.batch_1_eval = False # avoid resizing
     dataset.use_random_crop = False # avoid cropped img
+
+    ## if want to make fake 1.25mm crops from 5mm lung_voi
+    if load_fake_125:
+        dataset.set_5mm(use_5mm=True, load_5mm_pkl="fast_test_max_5.0x0.75x0.75.pkl")
+        dataset.set_batch_1_eval(batch_1_eval=True, equal_spacing=[1.25,0.75,0.75])
     assert all([npy_name==None for npy_name, _, _ in dataset.data]) # avoid loading npy
 
     target_transform_text = "x".join(str(i) for i in target_transform)
     target_input_shape_text = "x".join(str(i) for i in target_input_shape)
     device = torch.device(device)
-    if (0): #快進data (less I/O)
+    if (1): #快進data (less I/O)
         #dataset.data = dataset.data[95+315+17:] #the place where error had occurred before ...
         ###TODO: pid = 20732541 (idx=95+315), seems to have unreasonable transform!! delete data??
-        dataset.data = dataset.data[:]
+
+        # viewing
+        #dataset.data = dataset.data[19+27+21+31+156+2+33+21+215+86+32:]
+        dataset.get_data(["21678302", "6993538"])
+
+        # processing
+        #dataset.data = dataset.data[328:]
+        
+
     for i, (img, bboxes, pid) in tqdm(enumerate(dataset), desc="RandomCropPreprocessing",total=len(dataset)):
         #print("pid", pid) 
-        dcm_reader = dataset.tumors[ dataset.pid_to_excel_r_relation[pid][0] ].dcm_reader
-        transform = [dcm_reader.SliceThickness] + list(dcm_reader.PixelSpacing[::-1])
+        if load_fake_125:
+            transform = [1.25, 0.75, 0.75]
+        else:
+            dcm_reader = dataset.tumors[ dataset.pid_to_excel_r_relation[pid][0] ].dcm_reader
+            transform = [dcm_reader.SliceThickness] + list(dcm_reader.PixelSpacing[::-1])
+        #print('pid', pid)
         #print("transform", transform)
         img = img.squeeze(-1)
+        if stack_before_process: #change z-thickness to 5mm before processing
+            img = img.numpy()
+            target_spacing = list(transform)
+            target_spacing[0] = 5.0
+            assert target_transform[0] == 5.0, "Expect using 5.0mm target_transform"
+            img, new_spacing, bboxes = stacking1D_average(img, axis=0, ori_spacing=transform, target_spacing=target_spacing, ori_bbox=bboxes.tolist(), stack_func="max")
+            transform = new_spacing # get new_spacing after stacking!!!
+            img = torch.tensor(img, dtype=torch.float32)
+            #print("new spacing after 5mm", new_spacing)
+
         #print("ori img shape", img.shape)
         #norm_img = utils_hsz.normalize(img)
         #AnimationViewer(img.numpy(), bbox=[box[:-2] for box in bboxes], note=f"{pid} Original")
         #img = img.unsqueeze(0).to(device) # -> C=1,Z,Y,X
         img = img.to(device)
+        #print("random crop transform: {} -> {}".format(transform, target_transform))
         #bboxes = torch.tensor( [box[:-2] for box in bboxes], dtype=torch.float32, device=device )
         out = random_crop_preprocessing(img, [box[:-2] for box in bboxes], transform, target_transform, target_input_shape, n_copy)
         for i, (out_img, out_bboxes) in enumerate(out):
@@ -399,7 +446,7 @@ def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape
             #print("out_bboxes", out_bboxes)
             #AnimationViewer(out_img.cpu().numpy(), out_bboxes, note=f"{pid} Crop{i}")
 
-            name = "random_crop_{}_{}_c{}.pkl".format(target_input_shape_text, target_transform_text, i+1)    
+            name = "random_crop_{}_{}_fake1.25_from_5mm_max_c{}.pkl".format(target_input_shape_text, target_transform_text, i+1)    
             #new_img = new_img.unsqueeze(0).cpu().float().numpy() # to float16 (half) here # (Z,Y,X) -> (1,Z,Y,X)
             out_img = out_img.cpu().numpy()
             #new_boxes = [box+[1,1] for box in new_boxes] # [z1,y1,x1,z2,y2,x2] -> [z1,y1,x1,z2,y2,x2,1,1]
@@ -413,7 +460,8 @@ def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape
                     pickle.dump(to_save, f)
                     #print("save to", name)
             else:
-                pass
+                if (1):
+                    AnimationViewer(out_img, out_bboxes, note=pid, draw_face=False)
                 print("Fake saving to", name)
 
 def _test_pkl():
@@ -431,6 +479,8 @@ if __name__ == "__main__":
     #_test_iou()
     #_test_random_crop()
     #_test_pixelspacing()
-    device = "cpu"
-    _dataset_preprocessing(save=False, n_copy=10, target_transform=(1.25, 0.75, 0.75), target_input_shape=(128,256,256), device=device)
+    device = "cuda"
+    _dataset_preprocessing(save=True, n_copy=20, target_transform=(1.25, 0.75, 0.75),
+                            target_input_shape=(128, 128, 128), device=device, stack_before_process=False,
+                            load_fake_125=True)
     #_test_pkl()

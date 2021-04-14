@@ -186,7 +186,7 @@ def resize(arr, output_shape, cval=0, silent=False):
     
     return new_arr
 
-def resize_without_pad(arr, output_shape, mode="trilinear", device="cpu"):
+def resize_without_pad(arr, output_shape, mode="trilinear", device="cpu", **kwargs):
     """
     Do only resizing using torch.nn.functional.interpolate
     """
@@ -194,7 +194,7 @@ def resize_without_pad(arr, output_shape, mode="trilinear", device="cpu"):
     tensor = torch.tensor(arr, device=device)
     tensor = tensor.unsqueeze_(0).unsqueeze_(0)
     #print("ori:", tensor.shape, "; output_shape:", output_shape)
-    resized = torch.nn.functional.interpolate(tensor, size=output_shape, mode=mode)
+    resized = torch.nn.functional.interpolate(tensor, size=output_shape, mode=mode, **kwargs)
     resized = resized.squeeze_(0).squeeze_(0).cpu().numpy()
     return resized
 

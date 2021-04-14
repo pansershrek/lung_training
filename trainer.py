@@ -67,6 +67,8 @@ class Trainer(object):
         self.det_tp_iou_thresh = cfg.VAL["TP_IOU_THRESH"] if det_tp_iou_thresh==None else det_tp_iou_thresh
         self.eval_conf_thresh = cfg.VAL["CONF_THRESH"] if eval_conf_thresh==None else eval_conf_thresh
 
+        self.use_5mm = cfg.TRAIN["USE_5MM"]
+
         self.do_fp_reduction = cfg.TRAIN["DO_FP_REDUCTION"]
         #self.fp_reduction_target = cfg.TRAIN["FP_REDUCTION_TARGET_DATASET"] 
         self.fp_reduction_start_epoch = cfg.TRAIN["FP_REDUCTION_START_EPOCH"]
@@ -145,18 +147,35 @@ class Trainer(object):
                     if pid not in err_pids:
                         trimmed_data.append(datum)
                 test_dataset.data = trimmed_data
+
+        if self.use_5mm:
+            if cfg.VAL["FAST_EVAL_PKL_NAME"] not in (False, None):
+                pkl_name = cfg.VAL["FAST_EVAL_PKL_NAME"]
+                assert type(pkl_name) == str, "Bad param for FAST_EVAL_PKL_NAME in cfg: '{}'".format(pkl_name)
+            else:
+                pkl_name = False
+            train_dataset.set_5mm(True)
+            test_dataset.set_5mm(True, pkl_name)
+            
         
         if self.do_fp_reduction: # (pre-cropped version)
             assert self.train_random_crop
             train_fp_dataset = LungDataset.load(dataset_name)
             train_fp_dataset.data = train_data
-            train_fp_dataset.set_random_crop("false_positive", 3, True, NEGATIVE_NPY_SAVED_PATH, cfg.TRAIN["FP_REDUCTION_MODE"])
+            train_fp_dataset.set_random_crop(cfg.TRAIN["FP_REDUCTION_CROP_PREFIX"], cfg.TRAIN["FP_REDUCTION_CROP_NCOPY"], True, NEGATIVE_NPY_SAVED_PATH, cfg.TRAIN["FP_REDUCTION_MODE"])
             self.train_fp_dataset = YOLO4_3DDataset(train_fp_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False, use_zero_conf=cfg.TRAIN["FP_REDUCTION_USE_ZERO_CONF"])
             self.train_fp_data_loader = DataLoader(self.train_fp_dataset,
                                            batch_size=cfg.TRAIN["BATCH_SIZE"],
                                            num_workers=cfg.TRAIN["NUMBER_WORKERS"]//2,
                                            shuffle=True, pin_memory=False
                                            )
+            if (0): #debug
+                for img, bbox, pid in train_fp_dataset:
+                    pass
+                    #print("fp pid", pid)
+                    #view_img = img.squeeze(-1).numpy()
+                    #print("fp bbox:", bbox)
+                    #AnimationViewer(view_img, bbox[:,:6], note=str(pid), draw_face=False)
 
 
         self.train_dataset = YOLO4_3DDataset(train_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False)
@@ -272,8 +291,9 @@ class Trainer(object):
             logger.info("===Epoch:[{}/{}]===".format(epoch, self.epochs))
             n_batch = len(self.train_dataloader)
 
-            do_fp_reduction_this_epoch = (self.do_fp_reduction) and (epoch>=self.fp_reduction_start_epoch) and (epoch%self.fp_reduction_interval==0)
-            fp_iterator = iter(self.train_fp_data_loader)
+            if self.do_fp_reduction:
+                do_fp_reduction_this_epoch = (self.do_fp_reduction) and (epoch>=self.fp_reduction_start_epoch) and (epoch%self.fp_reduction_interval==0)
+                fp_iterator = iter(self.train_fp_data_loader)
 
             for i, batched_data in tqdm(enumerate(self.train_dataloader), total=n_batch):
                 imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, _ = batched_data
@@ -294,7 +314,7 @@ class Trainer(object):
                 #    self.model.train() # turn from evaluating back to training
 
                 # fp reduction (load npy version)
-                if do_fp_reduction_this_epoch:
+                if self.do_fp_reduction and do_fp_reduction_this_epoch:
                     fp_data = next(fp_iterator)
                     cat = lambda t1,t2: torch.cat([t1,t2], dim=0) if type(t1)==torch.Tensor==type(t2) else t1+t2
                     merged_data = [cat(t1,t2) for t1,t2 in zip(batched_data, fp_data)]
@@ -498,6 +518,9 @@ class Trainer(object):
                         img_names = [_[0] for _ in img_names]
 
                     print("eval imgs input shape:", imgs.shape)
+                    if (0) and self.batch_1_eval:
+                        vimg = imgs.squeeze(0).squeeze(0).numpy()
+                        AnimationViewer(vimg, note="eval:{}".format(img_names[0]))
                     imgs = imgs.to(self.device)
                     for img, img_name, shape_before_pad, valid_bbox in zip(imgs, img_names, shapes_before_pad, valid_bboxes):
                         #print("(Eval) Current img:", img_name)
@@ -546,11 +569,12 @@ class Trainer(object):
         writer = self.writer
         logger = self.logger
 
-    def get_fp_for_reduction_batch(self, img_names, return_crop_only=False): # batch_version
+    def get_fp_for_reduction_batch(self, img_names, return_crop_only=False, topk=None): # batch_version
         """
         fp_bboxes_all_pid: a dictionary, key=pid, value=fp_bboxes
         fp_bboxes: shape (X, 8), where 8 = pred_coor(6) + pred_conf(1) + pred_class_idx(1) [X differs due to postprocessing]
-
+        @Argument
+            topk: None or int; if assigned, crop all topk FP
         """
         ### IDEAS
         ## Using eval crop (fp) into training?? (WIP)
@@ -569,6 +593,14 @@ class Trainer(object):
                 fp_dataset.get_data(trimmed_names)
             else:
                 fp_dataset.get_data(img_names)
+        
+        if self.use_5mm:
+            if cfg.VAL["FAST_EVAL_PKL_NAME"] not in (False, None):
+                pkl_name = cfg.VAL["FAST_EVAL_PKL_NAME"]
+                assert type(pkl_name) == str, "Bad param for FAST_EVAL_PKL_NAME in cfg: '{}'".format(pkl_name)
+            else:
+                pkl_name = False
+            fp_dataset.set_5mm(True, pkl_name)
 
         fp_dataset.set_batch_1_eval(True, cfg.VAL["RANDOM_CROPPED_VOI_FIX_SPACING"])
         fp_dataset = YOLO4_3DDataset(fp_dataset, classes=[0,1], batch_1_eval=True)
@@ -618,7 +650,10 @@ class Trainer(object):
         cropped_names = []
         for i, (imgs, _, _, _, _, _, _, img_names, shapes_before_pad, valid_bboxes)  in tqdm(enumerate(fp_dataloader), total=n_batch, desc="fp cropping"):
             for img, img_name, shape_before_pad, valid_bbox in zip(imgs, img_names, shapes_before_pad, valid_bboxes):
-                k = 5 # top k fp to **choose** in "random_crop_3D"
+                if topk==None:
+                    k=5 # top k fp to **choose** in "random_crop_3D"
+                else:
+                    k=topk
                 img = img.squeeze_(-1).to(self.device)
                 fp_bboxes = fp_bboxes_all_pid[img_name] # shape (?, 8)
                 top_k_hard_fp_idx = fp_bboxes[:, 6].argsort()[-k:][::-1]
@@ -626,29 +661,33 @@ class Trainer(object):
                 to_crop_fp = torch.tensor(top_k_hard_fp[:,:6], device=self.device, dtype=torch.float32)
                 if len(to_crop_fp)==0: #no fp
                     continue
-                try:
-                    cropped_img, cropped_box = random_crop.random_crop_3D(img, to_crop_fp, cfg.TRAIN["TRAIN_IMG_SIZE"], cfg.TRAIN["TRAIN_IMG_SIZE"])
-                except Exception as e:
-                    print("Encounter error in random crop: {}".format(e.__repr__()))
-                    continue         
-                cropped_img, cropped_box = cropped_img[0], cropped_box[0] # only remove list, shape (C, new_d, new_h, new_w)
-                if (0): # random crop debug view
-                    view_img = cropped_img.squeeze(0).cpu().numpy()
-                    view_box = cropped_box
-                    AnimationViewer(view_img, view_box, "fp crop")
-                cropped_img = cropped_img.squeeze_(0).unsqueeze_(-1) # (1,Z,Y,X) -> (Z,Y,X,1)
-                n_box = cropped_box.shape[0]
-                ## mode
-                fp_mode = cfg.TRAIN["FP_REDUCTION_MODE"] # 0,0 | 0,1 | 1,0 | 1,1 (cls_index, mix)
-                assert fp_mode in ("0,1", "1,1")
-                conf_cls_label = torch.ones((n_box,2), device=self.device) #  cls == 1 and mix == 1
-                if fp_mode == "0,1": # cls_idx == 0
-                    conf_cls_label[:,1] = 0
+                if topk==None:
+                    to_crop_fp = random.choice(to_crop_fp).unsqueeze_(0)
+                for j in range(len(to_crop_fp)):
+                    try:
+                        cropped_img, cropped_box = random_crop.random_crop_3D(img, to_crop_fp[j].unsqueeze(0), cfg.TRAIN["TRAIN_IMG_SIZE"], cfg.TRAIN["TRAIN_IMG_SIZE"])
+                    except Exception as e:
+                        print("Encounter error in random crop: {}".format(e.__repr__()))
+                        continue         
+                    cropped_img, cropped_box = cropped_img[0], cropped_box[0] # only remove list, shape (C, new_d, new_h, new_w)
+                    if (0): # random crop debug view
+                        view_img = cropped_img.squeeze(0).cpu().numpy()
+                        view_box = cropped_box
+                        AnimationViewer(view_img, view_box, "fp crop")
+                    cropped_img = cropped_img.squeeze_(0).unsqueeze_(-1) # (1,Z,Y,X) -> (Z,Y,X,1)
+                    n_box = cropped_box.shape[0]
+                    ## mode
+                    fp_mode = cfg.TRAIN["FP_REDUCTION_MODE"] # 0,0 | 0,1 | 1,0 | 1,1 (cls_index, mix)
+                    assert fp_mode in ("0,1", "1,1")
+                    conf_cls_label = torch.ones((n_box,2), device=self.device) #  cls == 1 and mix == 1
+                    if fp_mode == "0,1": # cls_idx == 0
+                        #conf_cls_label[:,1] = 0 #ori
+                        conf_cls_label[:,0] = 0
 
-                cropped_box = torch.cat([cropped_box, conf_cls_label], dim=1)
-                cropped_imgs.append(cropped_img.cpu())
-                cropped_boxes.append(cropped_box.cpu().numpy())
-                cropped_names.append(img_name)
+                    cropped_box = torch.cat([cropped_box, conf_cls_label], dim=1)
+                    cropped_imgs.append(cropped_img.cpu())
+                    cropped_boxes.append(cropped_box.cpu().numpy())
+                    cropped_names.append(img_name)
 
         
         if return_crop_only: # return numpy fp crop and then exit (not for training)

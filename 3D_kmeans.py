@@ -119,7 +119,7 @@ if __name__ == "__main__":
         help='the path of ground truth file, default :\'kmeans_anchors.txt\''
     )
     dataset = LungDataset.load(CURRENT_DATASET_PKL_PATH)
-    dataset.set_random_crop("random_crop_128x128x128_1.25x0.75x0.75", 5, True) # only one copy is needed to calculate anchor
+    dataset.set_random_crop("random_crop_16x128x128_5.0x0.75x0.75", 20, True) # only one copy is needed to calculate anchor
     print("dataset.random_crop_ncopy:", dataset.random_crop_ncopy)
     boxes = []
     for _, bboxes, pid in dataset:
