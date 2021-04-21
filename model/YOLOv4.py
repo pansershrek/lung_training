@@ -8,6 +8,7 @@ from .backbones.CSPDarknet53 import _BuildCSPDarknet53
 from .backbones.mobilenetv2 import _BuildMobilenetV2
 from .backbones.mobilenetv3 import _BuildMobilenetV3
 from .backbones.resnest import _BuildResNeSt3D
+from .backbones.scnet3d import _Build_SCResNeSt3D
 
 
 class Conv(nn.Module):
@@ -223,6 +224,10 @@ class YOLOv4(nn.Module):
             elif cfg.MODEL["BACKBONE"] == "ResNeSt":
                 # ccy: the load weight feature had been handled in trainer.py, so you don't need to care about it here
                 self.backbone, feature_channels = _BuildResNeSt3D(in_channel=cfg.MODEL_INPUT_CHANNEL, used_for_yolo=True, bottleneck_expansion=4) 
+            elif cfg.MODEL["BACKBONE"] == "SCResNeSt":
+                self.backbone, feature_channels = _Build_SCResNeSt3D(in_channel=cfg.MODEL_INPUT_CHANNEL, used_for_yolo=True, bottleneck_expansion=4) 
+            else:
+                raise TypeError("Unknown model_type: '{}'".format(cfg.MODEL["BACKBONE"]))
         elif cfg.MODEL_TYPE["TYPE"] == 'Mobilenet-YOLOv4':
             # MobilenetV2 backbone
             self.backbone, feature_channels = _BuildMobilenetV2(in_channel=cfg.MODEL_INPUT_CHANNEL, weight_path=weight_path, resume=resume)

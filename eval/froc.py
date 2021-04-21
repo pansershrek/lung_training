@@ -129,6 +129,7 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
     #    lines = f.read().splitlines()
     box_lists_cacher = {}
     fp_bboxes_all_pid = {} # only used wher score_hit_thre==0.00
+    
     for i, score_hit_thre in enumerate(all_thre):
         txt='Use threshold: {:.3f}'.format(score_hit_thre)
         print(txt)
@@ -209,6 +210,8 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
                 ct[0] = (bx[3] + bx[0]) / 2
                 ct[1] = (bx[4] + bx[1]) / 2
                 ct[2] = (bx[5] + bx[2]) / 2
+                #print(bx)
+                #pass
                 if bx[6] >= score_hit_thre:# and (not check_boundary(ct)) : #and check_size(axis, size_threshold):
                     out_boxes.append(list(bx))
 

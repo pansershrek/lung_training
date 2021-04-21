@@ -36,6 +36,8 @@ class Evaluator(object):
         self.nms_thresh = cfg.VAL["NMS_THRESH"]
         self.box_top_k = box_top_k
         self.batch_1_eval = cfg.VAL["BATCH_1_EVAL"]
+        assert cfg.VAL["NODULE_RANKING_STRATEGY"] in ("conf_only", "conf+class"), "Unknown ranking strategy '{}'".format(cfg.VAL["NODULE_RANKING_STRATEGY"])
+        self.use_conf_x_prob = True if cfg.VAL["NODULE_RANKING_STRATEGY"]=="conf+class" else False
 
     def APs_voc(self, multi_test=False, flip_test=False):
         img_inds_file = os.path.join(self.val_data_path,  'ImageSets', 'Main', 'test.txt')
@@ -234,6 +236,13 @@ class Evaluator(object):
         # (5)Remove bboxes whose score is below the score_threshold
         classes = np.argmax(pred_prob, axis=-1) #predicted class idx
         scores = pred_conf * pred_prob[np.arange(len(pred_coor)), classes] # score = pred_prob_from_class * pred_conf (p.s. it only used sigmoid, no softmax in YoloHead)
+        if self.use_conf_x_prob: #only calculated scores for class "1"
+            invalid_cls_mask = classes!=1
+            s = invalid_cls_mask.sum()
+            #print( "cls1:others = {}:{}".format(len(classes)-s, s) )
+            scores[invalid_cls_mask] = 0
+            #pass
+
         score_mask = scores > self.conf_thresh
 
         mask = np.logical_and(scale_mask, score_mask)
@@ -256,6 +265,7 @@ class Evaluator(object):
             classes = classes[mask]
 
         bboxes = np.concatenate([coors, scores[:, np.newaxis], classes[:, np.newaxis]], axis=-1)
+        #print("bboxes[0]:", bboxes[0])
         return bboxes
     def clear_predict_file(self):
         if os.path.exists(self.pred_result_path):

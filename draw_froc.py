@@ -76,10 +76,14 @@ if __name__ == "__main__":
         #('train_rc_config_5.6.2_resnest_shallower_f4', 4, 221),
 
 
-        ('train_fake_1.25mm_config_1.4_f4', 4, 272),
-        ('train_fake_1.25mm_config_1.5_f4', 4, 204),
+ 
+        ('train_rc_config_5.7.1_SEConv_f0', 0, 221),
+        #('train_rc_config_5.7.1_SEConv_f1', 1, 187),
+        #('train_rc_config_5.7.1_SEConv_f2', 2, 170),
+        #('train_rc_config_5.7.1_SEConv_f3', 3, 255),
+        #('train_rc_config_5.7.1_SEConv_f4', 4, 187),
 
-
+        
         #('train_5mm_max_no_fp_reduction_dry_run_f0', 0, list(range(0,220,17))+[220]),
         #('train_5mm_max_no_fp_reduction_dry_run_f1', 1, list(range(0,220,17))+[220]),
         #('train_5mm_max_no_fp_reduction_dry_run_f2', 2, list(range(0,220,17))+[220]),
@@ -95,7 +99,7 @@ if __name__ == "__main__":
             #    continue
             if (1):
                 opt.exp_name = exp_name
-                #opt.exp_name = exp_name + "_fake_1.25"
+                #opt.exp_name = exp_name + "_diff_score"
                 #opt.exp_name = exp_name
             logger = Logger(log_file_name=opt.log_path + '/log.txt', log_level=logging.DEBUG, logger_name='YOLOv4').get_log()
             checkpoint_root = 'checkpoint/' #'/home/lab402/p08922003/YOLOv4-pytorch/checkpoint/'

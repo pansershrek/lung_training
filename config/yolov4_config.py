@@ -173,6 +173,7 @@ VAL = {
         "NMS_THRESH": 0.15, #0.15, *0.3, 0.45 # iou_thresh in utils.tools.nms (if two bbox has iou > thresh, discard one of them)
         "BOX_TOP_K": 512, # highest number of bbox after nms # *256, 512
         "TP_IOU_THRESH": 0.15, # iou threshold to view a predicted bbox as TP # *0.15, 0.3
+        "NODULE_RANKING_STRATEGY": "conf_only", # conf_only|conf+class
 
         "BATCH_SIZE": 1, # 1 or 8
 
@@ -227,7 +228,7 @@ MODEL = {#"ANCHORS":[[(1.25, 1.625), (2.0, 3.75), (4.125, 2.875)],  # Anchors fo
          "ANCHORS_PER_SCLAE":3,
 
          ## General params
-         "BACKBONE": "ResNeSt", # ResNeSt | CSPDarknet
+         "BACKBONE": "SCResNeSt", # ResNeSt | CSPDarknet | SCResNeSt
          "STRIDES":[4,8,16], # [4,8,16] for CSPDarknet; [4,8,16] for resnest # the last elements should == base_multiple
          "BASE_MULTIPLE":16, # == 2 ^ (#_stages in CSPDarknet)
          "USE_SACONV": False, ## RESNEST finished, CSPDarknet not implemented yet (i.e. no usage)
@@ -288,8 +289,9 @@ UPDATE_NOTE:
 10. Try 5mm mean training (exclude 5mm不清楚+5mm看不到) (worse than max, even exlude both data)
 11. Try fake 1.25 mm crops training + fake 1.25 mm testing, generated from 5mm max data (set TRAIN['use_5mm']=True, VAL['FAST_EVAL_PKL_NAME']!=False)
 12. Try SE-block in resnest (original 1.25mm) (config 5.7) [SE-Conv/SEnet cause OOM in testing] (edit: may try lower reduction parameter in SE layer!!)
-
+13-pre: Try "NODULE_RANKING_STRATEGY": "conf+class", and it has higher cpm (but for consistency, the following experiment will use normal strategy if not otherwise stated)
+13. Try SCNet (self calibration network at CVPR 2020) + ResNeST (SCResNeSt) + SE block 
 
 WHAT'S NEW:
-** Try SE-block in resnest (original 1.25mm) (config 5.7) [SE-Conv/SEnet cause OOM in testing] (edit: may try lower reduction parameter in SE layer!!)
+** Try SCNet (self calibration network at CVPR 2020) + ResNeST (SCResNeSt) + SE block
 """

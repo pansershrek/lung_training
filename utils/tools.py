@@ -500,13 +500,14 @@ def nms(bboxes, score_threshold, iou_threshold, sigma=0.3, method='nms', box_top
             bboxes = np.array(top_k_bboxes)
 
     classes_in_img = [_ for _ in classes_in_img if not _==0]
+    #print("class in img:", classes_in_img) # only [1]
     best_bboxes = []
     score_top_k_list = []
     for cls in classes_in_img:
         if bboxes.shape[-1]==8:
-            cls_mask = (bboxes[:, 7].astype(np.int32) == cls)
+            cls_mask = (bboxes[:, 7].astype(np.int32) == cls) #3d
         else:
-            cls_mask = (bboxes[:, 5].astype(np.int32) == cls)
+            cls_mask = (bboxes[:, 5].astype(np.int32) == cls) #2d
         cls_bboxes = bboxes[cls_mask]
         while len(cls_bboxes) > 0:
             if bboxes.shape[-1]==8:
@@ -514,6 +515,7 @@ def nms(bboxes, score_threshold, iou_threshold, sigma=0.3, method='nms', box_top
             else:
                 max_ind = np.argmax(cls_bboxes[:, 4])
             best_bbox = cls_bboxes[max_ind]
+            #print("best_bbox", best_bbox)
             best_bboxes.append(best_bbox)
             cls_bboxes = np.concatenate([cls_bboxes[: max_ind], cls_bboxes[max_ind + 1:]])
             if bboxes.shape[-1]==8:

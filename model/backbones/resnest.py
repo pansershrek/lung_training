@@ -137,8 +137,9 @@ def _BuildResNeSt3D(in_channel, weight_path=None, resume=False, used_for_yolo=Tr
 
         #t_shape = [[1, 128,128,128]] # not including batch_size
         #summary(model, t_shape, device=device)
+        #raise EOFError("End of file")
         t = torch.randn((1,1,256,512,512), device=device)
-        t = torch.randn((1,1,32,128,128), device=device)
+        #t = torch.randn((1,1,32,128,128), device=device)
         out = model(t)
         print("Output:", *[f.shape for f in out])
         #print("Feature channels:", model.feature_channels[-3:])

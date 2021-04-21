@@ -12,14 +12,18 @@ import math
 import torch
 import torch.nn as nn
 
-try:
-    from .splat import SplAtConv3d
-except (ImportError, ModuleNotFoundError):
-    from splat import SplAtConv3d
 import sys
 sys.path.append("D:/CH/LungDetection/training/detectoRS/mmdet/ops")
 from saconv import SAConv3d
-from model.layers.attention_layers import SEModule, SEModule_Conv, CBAM
+
+try:
+    from .splat import SplAtConv3d
+    from model.layers.attention_layers import SEModule, SEModule_Conv, CBAM
+except (ImportError, ModuleNotFoundError):
+    from splat import SplAtConv3d
+    sys.path.append("D:/CH/LungDetection/training")
+    from model.layers.attention_layers import SEModule, SEModule_Conv, CBAM
+    
 
 __all__ = ['ResNet', 'Bottleneck']
 
@@ -378,11 +382,16 @@ class ResNet(nn.Module):
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
+        #print("After maxpool:", x.shape)
 
         x = self.layer1(x)
+        #print("layer1", x.shape)
         x3 = self.layer2(x)
+        #print("layer2", x3.shape)
         x2 = self.layer3(x3)
+        #print("layer3", x2.shape)
         x1 = self.layer4(x2)
+        #print("layer4", x1.shape)
 
         if self.used_for_yolo:
             return [x3, x2, x1]
