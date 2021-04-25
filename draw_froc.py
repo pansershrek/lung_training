@@ -77,11 +77,11 @@ if __name__ == "__main__":
 
 
  
-        ('train_rc_config_5.7.1_SEConv_f0', 0, 221),
-        #('train_rc_config_5.7.1_SEConv_f1', 1, 187),
-        #('train_rc_config_5.7.1_SEConv_f2', 2, 170),
-        #('train_rc_config_5.7.1_SEConv_f3', 3, 255),
-        #('train_rc_config_5.7.1_SEConv_f4', 4, 187),
+        #('train_rc_config_5.8.1_SCResNeSt_SEConv_f0', 0, 187),
+        #('train_rc_config_5.8.1_SCResNeSt_SEConv_f1', 1, 221),
+        ('train_rc_config_5.8.1_SCResNeSt_SEConv_f2', 2, 187),
+        ('train_rc_config_5.8.1_SCResNeSt_SEConv_f3', 3, 204),
+        ('train_rc_config_5.8.1_SCResNeSt_SEConv_f4', 4, 170),
 
         
         #('train_5mm_max_no_fp_reduction_dry_run_f0', 0, list(range(0,220,17))+[220]),

@@ -68,6 +68,8 @@ class Trainer(object):
         self.eval_conf_thresh = cfg.VAL["CONF_THRESH"] if eval_conf_thresh==None else eval_conf_thresh
 
         self.use_5mm = cfg.TRAIN["USE_5MM"]
+        self.use_2d5mm = cfg.TRAIN["USE_2.5MM"]
+        assert not (self.use_5mm and self.use_2d5mm), "Either 5/2.5mm is ok, but not both at the same time"
 
         self.do_fp_reduction = cfg.TRAIN["DO_FP_REDUCTION"]
         #self.fp_reduction_target = cfg.TRAIN["FP_REDUCTION_TARGET_DATASET"] 
@@ -156,6 +158,14 @@ class Trainer(object):
                 pkl_name = False
             train_dataset.set_5mm(True)
             test_dataset.set_5mm(True, pkl_name)
+        elif self.use_2d5mm:
+            if cfg.VAL["FAST_EVAL_PKL_NAME"] not in (False, None):
+                pkl_name = cfg.VAL["FAST_EVAL_PKL_NAME"]
+                assert type(pkl_name) == str, "Bad param for FAST_EVAL_PKL_NAME in cfg: '{}'".format(pkl_name)
+            else:
+                pkl_name = False
+            train_dataset.set_2d5mm(True)
+            test_dataset.set_2d5mm(True, pkl_name)
             
         
         if self.do_fp_reduction: # (pre-cropped version)
@@ -416,6 +426,8 @@ class Trainer(object):
 
             end = time.time()
             logger.info("  ===cost time:{:.4f}s".format(end - start))
+            if epoch == self.early_stopping_epoch:
+                break
         logger.info("=====Training Finished.   best_test_CPM:{:.3f}%====".format(self.best_cpm))
 
     def evaluate(self, return_box=False):
@@ -601,6 +613,13 @@ class Trainer(object):
             else:
                 pkl_name = False
             fp_dataset.set_5mm(True, pkl_name)
+        elif self.use_2d5mm:
+            if cfg.VAL["FAST_EVAL_PKL_NAME"] not in (False, None):
+                pkl_name = cfg.VAL["FAST_EVAL_PKL_NAME"]
+                assert type(pkl_name) == str, "Bad param for FAST_EVAL_PKL_NAME in cfg: '{}'".format(pkl_name)
+            else:
+                pkl_name = False
+            fp_dataset.set_2d5mm(True, pkl_name)
 
         fp_dataset.set_batch_1_eval(True, cfg.VAL["RANDOM_CROPPED_VOI_FIX_SPACING"])
         fp_dataset = YOLO4_3DDataset(fp_dataset, classes=[0,1], batch_1_eval=True)

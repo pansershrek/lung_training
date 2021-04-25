@@ -379,7 +379,7 @@ def random_crop_preprocessing(img, bboxes, transform, target_transform, target_i
     return out
 
                 
-def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape=(128,128,128), n_copy=10, save=False, device="cuda", stack_before_process=False, load_fake_125=False):
+def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape=(128,128,128), n_copy=10, save=False, device="cuda", stack_before_process=False, load_fast_5mm=False, load_fast_2d5mm=False):
     """ target_input_shape must be multiples of 32, otherwise it will be very complicated!!! """
     global Tumor, LungDataset
     from dataset import Tumor, LungDataset
@@ -393,8 +393,13 @@ def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape
     dataset.use_random_crop = False # avoid cropped img
 
     ## if want to make fake 1.25mm crops from 5mm lung_voi
-    if load_fake_125:
+    if load_fast_5mm:
+        assert not load_fast_2d5mm, "Either 5mm or 2.5mm are valid, but not both at the same time"
         dataset.set_5mm(use_5mm=True, load_5mm_pkl="fast_test_max_5.0x0.75x0.75.pkl")
+        dataset.set_batch_1_eval(batch_1_eval=True, equal_spacing=[1.25,0.75,0.75])
+    elif load_fast_2d5mm:
+        assert not load_fast_5mm, "Either 5mm or 2.5mm are valid, but not both at the same time"
+        dataset.set_2d5mm(use_2d5mm=True, load_2d5mm_pkl="fast_test_max_2.5x0.75x0.75.pkl")
         dataset.set_batch_1_eval(batch_1_eval=True, equal_spacing=[1.25,0.75,0.75])
     assert all([npy_name==None for npy_name, _, _ in dataset.data]) # avoid loading npy
 
@@ -402,20 +407,22 @@ def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape
     target_input_shape_text = "x".join(str(i) for i in target_input_shape)
     device = torch.device(device)
     if (1): #快進data (less I/O)
+        pass
         #dataset.data = dataset.data[95+315+17:] #the place where error had occurred before ...
         ###TODO: pid = 20732541 (idx=95+315), seems to have unreasonable transform!! delete data??
 
         # viewing
         #dataset.data = dataset.data[19+27+21+31+156+2+33+21+215+86+32:]
-        dataset.get_data(["21678302", "6993538"])
+        #dataset.get_data(["21678302", "6993538"])
 
         # processing
+        dataset.data = dataset.data[:]
         #dataset.data = dataset.data[328:]
         
 
     for i, (img, bboxes, pid) in tqdm(enumerate(dataset), desc="RandomCropPreprocessing",total=len(dataset)):
         #print("pid", pid) 
-        if load_fake_125:
+        if load_fast_2d5mm or load_fast_5mm:
             transform = [1.25, 0.75, 0.75]
         else:
             dcm_reader = dataset.tumors[ dataset.pid_to_excel_r_relation[pid][0] ].dcm_reader
@@ -423,7 +430,8 @@ def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape
         #print('pid', pid)
         #print("transform", transform)
         img = img.squeeze(-1)
-        if stack_before_process: #change z-thickness to 5mm before processing
+        if stack_before_process: #change z-thickness to 5mm before processing (if use preload fast 5/2.5 mm, you should set this False)
+            assert (not load_fast_5mm) and (not load_fast_2d5mm), "It looks like you have stack your volumes beforehand; you shouldn't stack them once more."
             img = img.numpy()
             target_spacing = list(transform)
             target_spacing[0] = 5.0
@@ -445,8 +453,11 @@ def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape
             #print("out_img", out_img.shape)
             #print("out_bboxes", out_bboxes)
             #AnimationViewer(out_img.cpu().numpy(), out_bboxes, note=f"{pid} Crop{i}")
+            if load_fast_5mm:
+                name = "random_crop_{}_{}_fake1.25_from_5mm_max_c{}.pkl".format(target_input_shape_text, target_transform_text, i+1)    
+            elif load_fast_2d5mm:
+                name = "random_crop_{}_{}_fake1.25_from_2.5mm_max_c{}.pkl".format(target_input_shape_text, target_transform_text, i+1)   
 
-            name = "random_crop_{}_{}_fake1.25_from_5mm_max_c{}.pkl".format(target_input_shape_text, target_transform_text, i+1)    
             #new_img = new_img.unsqueeze(0).cpu().float().numpy() # to float16 (half) here # (Z,Y,X) -> (1,Z,Y,X)
             out_img = out_img.cpu().numpy()
             #new_boxes = [box+[1,1] for box in new_boxes] # [z1,y1,x1,z2,y2,x2] -> [z1,y1,x1,z2,y2,x2,1,1]
@@ -480,7 +491,10 @@ if __name__ == "__main__":
     #_test_random_crop()
     #_test_pixelspacing()
     device = "cuda"
+    #_dataset_preprocessing(save=False, n_copy=2, target_transform=(1.25, 0.75, 0.75),
+    #                        target_input_shape=(128, 128, 128), device=device, stack_before_process=False,
+    #                        load_fast_5mm=False, load_fast_2d5mm=True)
     _dataset_preprocessing(save=True, n_copy=20, target_transform=(1.25, 0.75, 0.75),
                             target_input_shape=(128, 128, 128), device=device, stack_before_process=False,
-                            load_fake_125=True)
+                            load_fast_5mm=False, load_fast_2d5mm=True)
     #_test_pkl()

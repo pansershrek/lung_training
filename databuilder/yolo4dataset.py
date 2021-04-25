@@ -87,9 +87,11 @@ class YOLO4_3DDataset(Dataset):
             c = img.size()[3]
             ### IF ANY DIMENSION % 8 !=0, PAD -1 TO AVOID ERROR IN FORWARD
             use_5mm = cfg.TRAIN["USE_5MM"]
+            use_2d5mm = cfg.TRAIN["USE_2.5MM"]
             def trans(x, base=cfg.MODEL["BASE_MULTIPLE"]):
                 out = x + base - x%base if x%base else x
                 if use_5mm and out<32:
+                    assert not use_2d5mm
                     out = 32
                 return out
             shape_before_pad = torch.tensor([d,h,w], dtype=torch.float32)

@@ -5,7 +5,7 @@ from utils_ccy import scale_bbox
 from global_variable import CURRENT_DATASET_PKL_PATH
 from utils_hsz import AnimationViewer
 
-def stacking1D_average(img, axis, ori_spacing, target_spacing, ori_bbox=None, stack_func="mean"):
+def stacking1D_average(img, axis, ori_spacing, target_spacing, ori_bbox=None, stack_func="max"):
     """
     Stacking 3D volumes on 1 specific axis using "average"
     當target_spacing/ori_spacing不整除時，取每int(target_spacing/ori_spacing)做平均
@@ -81,7 +81,7 @@ def stacking1D_average(img, axis, ori_spacing, target_spacing, ori_bbox=None, st
         return stacked_img, new_spacing
 
 
-def _test_average(): # ok, test passed
+def _test_average(target_mm=5.0): # ok, test passed
     dataset_path = CURRENT_DATASET_PKL_PATH
     dataset = LungDataset.load(dataset_path)
     dataset.get_data(dataset.pids)
@@ -112,9 +112,9 @@ def _test_average(): # ok, test passed
         tumor = dataset.tumors[dataset.pid_to_excel_r_relation[pid][0]]
         ori_spacing = tumor.dcm_reader.transform
         target_spacing = list(ori_spacing)
-        target_spacing[0] = 5.0
+        target_spacing[0] = target_mm # *** 5.0 or 2.5 ***
         print(f"thickness: {thickness}, pid: {pid}, ori_img_shape: {img.shape}, ori_bbox: {bbox}, ori_spacing: {ori_spacing}")
-        new_img, new_spacing, new_bbox = stacking1D_average(img, 0, ori_spacing, target_spacing, ori_bbox=bbox)
+        new_img, new_spacing, new_bbox = stacking1D_average(img, 0, ori_spacing, target_spacing, ori_bbox=bbox, stack_func="max")
         print(f"thickness: {thickness}, pid: {pid}, new_img_shape: {new_img.shape}, new_bbox: {new_bbox}, new_spacing: {new_spacing}")
 
         AnimationViewer(img, [box[:6] for box in bbox], note=f"Original-- thickness: {thickness}, pid: {pid}")
@@ -123,7 +123,7 @@ def _test_average(): # ok, test passed
 
 if __name__ == "__main__":
     from dataset import Tumor, LungDataset
-    _test_average()
+    _test_average(target_mm=2.5)
 
 
 

@@ -123,7 +123,7 @@ TRAIN = {
          "IOU_THRESHOLD_LOSS": 0.5, # *0.5, 0.02
          #for 640
          "YOLO_EPOCHS": 300, #8: 425, 500, 800, *300
-         "EARLY_STOPPING_EPOCH": None, # None or int
+         "EARLY_STOPPING_EPOCH": 200, # None or int (200)
          #for 96
          #"YOLO_EPOCHS": 100,
          #"Mobilenet_YOLO_EPOCHS": 120,
@@ -139,13 +139,14 @@ TRAIN = {
          #for 640
          "WARMUP_EPOCHS": 5, #40  # or None
          "USING_RANDOM_CROP_TRAIN": True,
-         "RANDOM_CROP_FILE_PREFIX": "random_crop_128x128x128_1.25x0.75x0.75", #"random_crop_128x128x128_1.25x0.75x0.75_fake1.25_from_5mm_max", # 5MM
+         "RANDOM_CROP_FILE_PREFIX": "random_crop_128x128x128_1.25x0.75x0.75_fake1.25_from_2.5mm_max", #"random_crop_128x128x128_1.25x0.75x0.75_fake1.25_from_5mm_max", # 5MM
          "RANDOM_CROP_SPACING": (1.25, 0.75, 0.75), #used in dataset.__getitem__ if using "fresh-cropped", 5MM
          "RANDOM_CROP_NCOPY": 20,
          "USE_5MM": False, # 5MM
+         "USE_2.5MM": True, # 2.5MM (Either 5/2.5mm is ok, but not both at the same time)
          "ESTIMATE_5MM_ANCHOR": False, # if True, use ANCHORS_ORI to estimate ANCHORS_5MM rather than using ANCHORS_5MM directly
 
-         "DO_FP_REDUCTION": True,
+         "DO_FP_REDUCTION": False,
          "FP_REDUCTION_CROP_PREFIX": "false_positive", #"false_positive_fake_1.25_from_5mm_max", # 5MM 
          "FP_REDUCTION_CROP_NCOPY": 3, # 3 for original 1.25mm, and 5 for others
          #"FP_REDUCTION_TARGET_DATASET": "training", #WIP
@@ -183,12 +184,12 @@ VAL = {
         "TEST_LUNG_VOI": True, # T/F, whether to use lung voi only during testing 
         "TEST_LUNG_VOI_IGNORE_INVALID_VOI": False, # T/F, whether to ignore pid listed in ${MASK_SAVED_PATH}/error.txt automatocaly
  
-        # to load fake_1.25mm test img, do the following settings:
-        # (1) let "FAST_EVAL_PKL_NAME"="fast_test_max_5.0x0.75x0.75.pkl"
+        # to load fake_1.25mm (from 5mm or 2.5mm) test img, do the following settings:
+        # (1) let "FAST_EVAL_PKL_NAME"="fast_test_max_5.0x0.75x0.75.pkl" (or 2.5mm version)
         # (2) let "RANDOM_CROPPED_VOI_FIX_SPACING"=(1.25,0.75,0.75)
-        # (3) let TRAIN["USE_5MM"]=True
-        #  *** FAST_EVAL_PKL_NAME has no use, if TRAIN["USE_5MM"]==False ***
-        "FAST_EVAL_PKL_NAME": "fast_test_max_5.0x0.75x0.75.pkl", # str or False, *fast_test_max_5.0x0.75x0.75.pkl
+        # (3) let TRAIN["USE_5MM"]=True or TRAIN["USE_2.5MM"]=True (based on your settings)
+        #  *** FAST_EVAL_PKL_NAME has no use, if TRAIN["USE_5MM"]==False and TRAIN["USE_2.5MM"]==False***
+        "FAST_EVAL_PKL_NAME": "fast_test_max_2.5x0.75x0.75.pkl", # str or False, *fast_test_max_5.0x0.75x0.75.pkl
         "5MM_STACKING_STRATEGY": "max",     
         #"MULTI_SCALE_VAL": True,
         #"FLIP_VAL": True,
@@ -228,7 +229,7 @@ MODEL = {#"ANCHORS":[[(1.25, 1.625), (2.0, 3.75), (4.125, 2.875)],  # Anchors fo
          "ANCHORS_PER_SCLAE":3,
 
          ## General params
-         "BACKBONE": "SCResNeSt", # ResNeSt | CSPDarknet | SCResNeSt
+         "BACKBONE": "ResNeSt", # ResNeSt | CSPDarknet | SCResNeSt
          "STRIDES":[4,8,16], # [4,8,16] for CSPDarknet; [4,8,16] for resnest # the last elements should == base_multiple
          "BASE_MULTIPLE":16, # == 2 ^ (#_stages in CSPDarknet)
          "USE_SACONV": False, ## RESNEST finished, CSPDarknet not implemented yet (i.e. no usage)
@@ -246,7 +247,7 @@ MODEL = {#"ANCHORS":[[(1.25, 1.625), (2.0, 3.75), (4.125, 2.875)],  # Anchors fo
          "RESNEST_FEATURE_CHANNELS": (24, 64, 128), # length == #_stages-1 == 3
          "RESNEST_BLOCKS_PER_STAGE": (2, 3, 3, 3), # length == #_stages == 4
          "RESNEST_STRIDE_PER_LAYER": (1, 2, 2),
-         "RESNEST_EXTRA_ATTENTION": "SEnetConv", #attention type:SEnet, SEnetConv, CBAM or NONE
+         "RESNEST_EXTRA_ATTENTION": None, #"SEnetConv", #attention type:SEnet, SEnetConv, CBAM or NONE
          }
 
 def _check():
@@ -267,7 +268,7 @@ def modify():
                         for anc in scale:
                                 anc[0] /= 5/1.25
                 MODEL["ANCHORS3D"] = tmp
-        elif TRAIN["USE_5MM"] and TRAIN['RANDOM_CROP_SPACING'][0] == 5.0: 
+        elif TRAIN["USE_5MM"] and TRAIN['RANDOM_CROP_SPACING'][0] == 5.0:
                 MODEL["ANCHORS3D"] = MODEL["ANCHORS3D_5MM"] 
         else:
                 MODEL["ANCHORS3D"] = MODEL["ANCHORS3D_ORI"]
@@ -290,8 +291,9 @@ UPDATE_NOTE:
 11. Try fake 1.25 mm crops training + fake 1.25 mm testing, generated from 5mm max data (set TRAIN['use_5mm']=True, VAL['FAST_EVAL_PKL_NAME']!=False)
 12. Try SE-block in resnest (original 1.25mm) (config 5.7) [SE-Conv/SEnet cause OOM in testing] (edit: may try lower reduction parameter in SE layer!!)
 13-pre: Try "NODULE_RANKING_STRATEGY": "conf+class", and it has higher cpm (but for consistency, the following experiment will use normal strategy if not otherwise stated)
-13. Try SCNet (self calibration network at CVPR 2020) + ResNeST (SCResNeSt) + SE block 
+13. Try SCNet (self calibration network at CVPR 2020) + ResNeST (SCResNeSt) + SE block (inference time?) (similar result or even poorer)
+14. Try fake 1.25mm from 2.5mm (ResNest, no attention)
 
 WHAT'S NEW:
-** Try SCNet (self calibration network at CVPR 2020) + ResNeST (SCResNeSt) + SE block
+** Try fake 1.25mm from 2.5mm (ResNest, no attention)
 """

@@ -138,6 +138,8 @@ class LungDataset(Dataset):
         ## slice thickness related parameters
         self.use_5mm = False
         self.load_5mm_pkl = False
+        self.use_2d5mm = False
+        self.load_2d5mm_pkl = False
 
 
         df = self.voi_excel
@@ -239,6 +241,15 @@ class LungDataset(Dataset):
         assert (use_5mm in (True, False))
         self.use_5mm = use_5mm
         self.load_5mm_pkl = load_5mm_pkl
+        if self.use_2d5mm:
+            self.use_2d5mm = False
+
+    def set_2d5mm(self, use_2d5mm=True, load_2d5mm_pkl=False):
+        assert (use_2d5mm in (True, False))
+        self.use_2d5mm = use_2d5mm
+        self.load_2d5mm_pkl = load_2d5mm_pkl
+        if self.use_5mm:
+            self.use_5mm = False
         
 
     @classmethod
@@ -324,8 +335,21 @@ class LungDataset(Dataset):
                             d, h, w = img.shape
                             d_new, h_new, w_new = round(d*5.0/self.equal_spacing[0]), round(h*0.75/self.equal_spacing[1]), round(w*0.75/self.equal_spacing[2])
                             img = utils.resize_without_pad(img, (d_new,h_new,w_new), "trilinear", align_corners=False)
+                    elif self.use_2d5mm and self.load_2d5mm_pkl: # loading preprocessed 5mm npy 
+                        assert self.batch_1_eval
 
-
+                        pkl_name = self.load_2d5mm_pkl
+                        assert type(pkl_name) == str
+                        pkl_path = os.path.join(NPY_SAVED_PATH, pid, pkl_name)
+                        with open(pkl_path, "rb") as f:
+                            img, bboxes = pickle.load(f)
+                        original_shape = img.shape
+                        n = bboxes.shape[0]
+                        bboxes = np.concatenate([bboxes, np.ones((n,2))], axis=1).tolist() # (n,6) -> (n,8)
+                        if self.equal_spacing[0] != 2.5: # 2.5 -> 1.25 (fake 1.25)
+                            d, h, w = img.shape
+                            d_new, h_new, w_new = round(d*2.5/self.equal_spacing[0]), round(h*0.75/self.equal_spacing[1]), round(w*0.75/self.equal_spacing[2])
+                            img = utils.resize_without_pad(img, (d_new,h_new,w_new), "trilinear", align_corners=False)
 
                     else: # freshly making test_npy
                         img = self.get_series_by_pid(pid)  #已於dicom_reader.py處理過hu
@@ -346,6 +370,14 @@ class LungDataset(Dataset):
                         if self.use_5mm: # to 5 mm
                             target_spacing = list(ori_spacing).copy()
                             target_spacing[0] = 5.0  ## change z-spacing to 5.0
+                            img, new_spacing, bboxes = stacking1D_average(img, 0, ori_spacing, target_spacing, bboxes, stack_func=cfg.VAL["5MM_STACKING_STRATEGY"])
+                            tumor.SliceThickness = new_spacing[0]
+                            tumor.PixelSpacing = (new_spacing[1], new_spacing[0])
+                            original_shape = img.shape ## 5mm voi shape
+                            ori_spacing = new_spacing
+                        elif self.use_2d5mm: # to 2.5 mm
+                            target_spacing = list(ori_spacing).copy()
+                            target_spacing[0] = 2.5  ## change z-spacing to 2.5
                             img, new_spacing, bboxes = stacking1D_average(img, 0, ori_spacing, target_spacing, bboxes, stack_func=cfg.VAL["5MM_STACKING_STRATEGY"])
                             tumor.SliceThickness = new_spacing[0]
                             tumor.PixelSpacing = (new_spacing[1], new_spacing[0])
