@@ -84,22 +84,38 @@ def fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k=3, check_gt=False
         img = pad_img
     utils_hsz.AnimationViewer(img, bbox=[box for box, _ in boxes], verbose=False)
 
-def plot_img_with_bbox(pid = "10755333"):
+def plot_img_with_bbox(pid = "10755333", extra_bbox=(), use_5mm=False, use_2d5mm=False, add_notFP=False):
     dataset = LungDataset.load(CURRENT_DATASET_PKL_PATH)
     dataset.get_data(dataset.pids)#, name="hu+norm_128x128x128.npy")
     dataset.set_batch_1_eval(True, (1.25,0.75,0.75))
+    if use_5mm:
+        dataset.set_5mm(True, "fast_test_max_5.0x0.75x0.75.pkl")
+    elif use_2d5mm:
+        dataset.set_2d5mm(True, "fast_test_max_2.5x0.75x0.75.pkl")
+    if type(pid)!=str: # if pid not assigned, use random pid
+        import random
+        pid = random.choice(dataset.pids)
     for i, datum in enumerate(dataset.data):
         if datum[2]==str(pid):
             key=i
             break
     img, gt_boxes, _ = dataset[key]
     boxes = [box[:6] for box in gt_boxes]
+    if len(extra_bbox)!=0:
+        boxes = boxes + list(extra_bbox)
+    if add_notFP:
+        import pandas as pd
+        not_fp_excel_path = "D:/CH/LungDetection/not_fp_1.25mm.xlsx"
+        df = pd.read_excel(not_fp_excel_path, sheet_name="Sheet1", converters={'pid':str,'bbox':str, 'isFP':int})
+        df = df[df['pid']==pid]
+        extra_bbox = [eval(lst) for lst in df["bbox"]]
+        boxes = boxes + list(extra_bbox)
     img = img.squeeze(-1).numpy().astype(np.float32)
     utils_hsz.AnimationViewer(img, bbox=boxes)
 
 if __name__ == "__main__":
-    #plot_img_with_bbox()
-    #raise EOFError
+    plot_img_with_bbox(use_2d5mm=True, add_notFP=True, pid=None)
+    raise EOFError
     #pid = "1926851"
     top_k = 4
     fix_spacing = (1.25,0.75,0.75)

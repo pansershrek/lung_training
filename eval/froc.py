@@ -3,11 +3,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from os.path import join as pjoin
 import pickle
+import pandas as pd
 
 from utils_ABUS.postprocess import centroid_distance, eval_precision_recall_by_dist, eval_precision_recall
 from utils_ABUS.misc import draw_full, build_threshold, AUC
 import config.yolov4_config as cfg
-from global_variable import NPY_SAVED_PATH
+from global_variable import NPY_SAVED_PATH, EXTRA_FP_EXCEL_PATH
 
 def iou_3D(boxes, target_box): #zyxzyx format, by ccy
     """
@@ -129,7 +130,12 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
     #    lines = f.read().splitlines()
     box_lists_cacher = {}
     fp_bboxes_all_pid = {} # only used wher score_hit_thre==0.00
-    
+
+    # extra notFP set
+    if cfg.TRAIN["EXTRA_FP_USAGE"] == "eval_only":
+        extra_not_fp_df = pd.read_excel(EXTRA_FP_EXCEL_PATH, sheet_name="Sheet1", converters={'pid':str,'bbox':str, 'isFP':int})
+
+
     for i, score_hit_thre in enumerate(all_thre):
         txt='Use threshold: {:.3f}'.format(score_hit_thre)
         print(txt)
@@ -227,11 +233,17 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
                 if FN_IOU_1 > 0 and i is 0:
                     print("FN = {}: {}".format(FN_IOU_1, line[0]))
             
+            if cfg.TRAIN["EXTRA_FP_USAGE"] == "eval_only": # extra_tp/fp
+                current_not_fp_df = extra_not_fp_df[(extra_not_fp_df["pid"]==pid) & (extra_not_fp_df["isFP"]==0)]
+                extra_tp =  [eval(lst) for lst in current_not_fp_df["bbox"]]
+            else:
+                extra_tp = None
+            
             if (1): #using iou
-                TP, FP, FN, hits_index, hits_iou, hits_score = eval_precision_recall(out_boxes, true_box, det_thresh=det_tp_iou_thresh, scale=scale) #det_thresh == IOU thresh
+                TP, FP, FN, hits_index, hits_iou, hits_score = eval_precision_recall(out_boxes, true_box, det_thresh=det_tp_iou_thresh, scale=scale, extra_tp=extra_tp) #det_thresh == IOU thresh
                 #print(f"TP:{TP}, FP:{FP}, FN:{FN}, hits_index:{hits_index}, hits_iou:{hits_iou}, hits_score:{hits_score}")
             if (1): # using luna or other distance criteria
-                TP_dist, FP_dist, FN_dist, hits_index_dist, hits_dist, hits_score_dist, TP_by_size, fp_bboxes = eval_precision_recall_by_dist(out_boxes, true_box, dist_thresh=None, scale=scale, spacing=cfg.VAL["RANDOM_CROPPED_VOI_FIX_SPACING"], return_fp_bboxes=True)
+                TP_dist, FP_dist, FN_dist, hits_index_dist, hits_dist, hits_score_dist, TP_by_size, fp_bboxes = eval_precision_recall_by_dist(out_boxes, true_box, dist_thresh=None, scale=scale, spacing=cfg.VAL["RANDOM_CROPPED_VOI_FIX_SPACING"], return_fp_bboxes=True, extra_tp=extra_tp)
                 if return_fp_bboxes and score_hit_thre == 0.0:
                     fp_bboxes_all_pid[pid] = fp_bboxes
 
@@ -411,7 +423,7 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
     plt.ylabel('Sensitivity')
     plt.xlabel('False Positive Per Pass')
     if return_fp_bboxes:
-        plt.close()
+        #plt.close()
         return area_dist, area_iou, plt, log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, fp_bboxes_all_pid
     else:
         return area_dist, area_iou, plt, log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou

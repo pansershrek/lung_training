@@ -30,6 +30,7 @@ from global_variable import CURRENT_DATASET_PKL_PATH
 from databuilder.yolo4dataset import YOLO4_3DDataset
 from tqdm import tqdm
 from trainer import Trainer
+import config.yolov4_config as cfg
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -46,27 +47,12 @@ if __name__ == "__main__":
 
 
     for exp_name, fold_num, eval_epochs in [
-        #('train_128x128x128_2_f3', 3),
-        #('train_256_256_256_1', 0),
-        #('debug', 0),
-        #('train_rc_1_f0', 0),
-        #('train_rc_1_f1', 1),
-        #('train_rc_1_f2', 2),
-        #('train_rc_1_f3', 3),
-        #('train_rc_1_f4', 4),
-        #('train_rc_config_2_biggercrop_f0', 0),
-        #('train_rc_config_4_fp_pool_f1', 1),
-        #('train_rc_config_3_f0', 0, 204),
-        #('train_rc_config_3_f1', 1, 170),
-        #('train_rc_config_3_f2', 2, 187),
-        #('train_rc_config_3_f3', 3, 306),
-        #('train_rc_config_3_f4', 4, 153),
 
-        #('train_rc_config_4_fp_pool_f0_take2_from136', 0, 187),
-        #('train_rc_config_4_fp_pool_f1', 1, 255),
-        #('train_rc_config_4_fp_pool_f2', 2, 306),
-        #('train_rc_config_4_fp_pool_f3', 3, 204),
-        #('train_rc_config_4_fp_pool_f4', 4, 187),
+        ('train_rc_config_5.6.4_resnest_shallower_f0', 0, 187),
+        ('train_rc_config_5.6.5_resnest_shallower_f1', 1, 255),
+        ('train_rc_config_5.6_resnest+sgd_shallower_f2', 2, 187),
+        ('train_rc_config_5.6_resnest+sgd_shallower_f3', 3, 204),
+        ('train_rc_config_5.6.2_resnest_shallower_f4', 4, 221)
 
         # 5mm model inference on 1.25
         #('train_rc_config_5.6.4_resnest_shallower_f0', 0, 187),
@@ -76,12 +62,7 @@ if __name__ == "__main__":
         #('train_rc_config_5.6.2_resnest_shallower_f4', 4, 221),
 
 
- 
-        #('train_rc_config_5.8.1_SCResNeSt_SEConv_f0', 0, 187),
-        #('train_rc_config_5.8.1_SCResNeSt_SEConv_f1', 1, 221),
-        ('train_rc_config_5.8.1_SCResNeSt_SEConv_f2', 2, 187),
-        ('train_rc_config_5.8.1_SCResNeSt_SEConv_f3', 3, 204),
-        ('train_rc_config_5.8.1_SCResNeSt_SEConv_f4', 4, 170),
+        #('train_rc_config_5.7.2_SEConv_f2', 2, 272),
 
         
         #('train_5mm_max_no_fp_reduction_dry_run_f0', 0, list(range(0,220,17))+[220]),
@@ -101,6 +82,8 @@ if __name__ == "__main__":
                 opt.exp_name = exp_name
                 #opt.exp_name = exp_name + "_diff_score"
                 #opt.exp_name = exp_name
+            if cfg.TRAIN["EXTRA_FP_USAGE"] == "eval_only":
+                opt.exp_name = opt.exp_name + "_EXTRA_FP"
             logger = Logger(log_file_name=opt.log_path + '/log.txt', log_level=logging.DEBUG, logger_name='YOLOv4').get_log()
             checkpoint_root = 'checkpoint/' #'/home/lab402/p08922003/YOLOv4-pytorch/checkpoint/'
             checkpoint_folder = '{}{}'.format(checkpoint_root, exp_name)

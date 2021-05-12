@@ -76,7 +76,7 @@ def iou_3D(boxes, target_box): #zyxzyx format
     target_bbox: [z,y,x,z,y,x]
     """
     assert type(boxes) in [list, np.ndarray]
-    if type(boxes[0])!=np.ndarray: # one box only
+    if not hasattr(boxes[0], "__iter__") : # one box only
         boxes = [boxes]
     box2 = np.array(target_box)
     tz1, ty1, tx1, tz2, ty2, tx2 = box2

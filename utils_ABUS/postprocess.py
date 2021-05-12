@@ -56,7 +56,7 @@ def compute_iou(box1, box2, scale): #box: zyxzyx, scale:zyx
     return iou
 
 
-def eval_precision_recall(pred_BB, true_BB, det_thresh, scale, return_fp_bboxes=False):
+def eval_precision_recall(pred_BB, true_BB, det_thresh, scale, return_fp_bboxes=False, extra_tp=None):
     '''
         by Eason Ho
     '''
@@ -75,6 +75,11 @@ def eval_precision_recall(pred_BB, true_BB, det_thresh, scale, return_fp_bboxes=
                 hits_iou[gt_idx] = pred_iou
                 hits_score[gt_idx]=pred_bb[6]
                 pred_hits[pred_idx] = 1
+        if type(extra_tp)!=type(None): # extra_tp: iterable
+            for _, gt_roi in enumerate(extra_tp):
+                pred_iou = compute_iou(pred_bb[:6], gt_roi[:6], scale)
+                if pred_iou > det_thresh:
+                    pred_hits[pred_idx] = 1
 
     TP = gt_hits.sum()
     FP = len(pred_hits) - pred_hits.sum()
@@ -114,7 +119,7 @@ def centroid_distance(box1, box2, scale, spacing):
     return dist
 
 
-def eval_precision_recall_by_dist(pred_BB, true_BB, dist_thresh, scale, spacing, return_fp_bboxes=False):
+def eval_precision_recall_by_dist(pred_BB, true_BB, dist_thresh, scale, spacing, return_fp_bboxes=False, extra_tp=None):
     """
     dist thresh: int or None; if is None, dist_thresh = "1/2 diameter(longest axis) of GT nodule" according to LUNA challenge
     scale: an array/list of form [z,y,x]; a ratio of "the input/decoded img size" to "the img size of GT box"
@@ -142,10 +147,21 @@ def eval_precision_recall_by_dist(pred_BB, true_BB, dist_thresh, scale, spacing,
                 hits_dist[gt_idx] = dist
                 hits_score[gt_idx] = pred_bb[6]
                 pred_hits[pred_idx] = 1
-
         if (0):
             if gt_hits[gt_idx] == 1:
                 TP_by_size = list(map(add, TP_by_size, categorize_by_size(gt_roi[:6])))
+
+    if type(extra_tp)!=type(None): # extra_tp: iterable
+        for _, gt_roi in enumerate(extra_tp):
+            if dist_thresh==None:
+                d, w, h = gt_roi[3]-gt_roi[0], gt_roi[4]-gt_roi[1], gt_roi[5]-gt_roi[2]
+                dist_thresh = max(d, w, h)/2
+            for pred_idx, pred_bb in enumerate(pred_BB):
+                dist = centroid_distance(pred_bb[:6], gt_roi[:6], scale, spacing)
+                if dist <= dist_thresh:
+                    pred_hits[pred_idx] = 1
+
+        
 
     TP = gt_hits.sum()
     FP = len(pred_hits) - pred_hits.sum()

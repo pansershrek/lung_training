@@ -123,7 +123,7 @@ TRAIN = {
          "IOU_THRESHOLD_LOSS": 0.5, # *0.5, 0.02
          #for 640
          "YOLO_EPOCHS": 300, #8: 425, 500, 800, *300
-         "EARLY_STOPPING_EPOCH": 200, # None or int (200)
+         "EARLY_STOPPING_EPOCH": None, # None or int (200)
          #for 96
          #"YOLO_EPOCHS": 100,
          #"Mobilenet_YOLO_EPOCHS": 120,
@@ -139,14 +139,14 @@ TRAIN = {
          #for 640
          "WARMUP_EPOCHS": 5, #40  # or None
          "USING_RANDOM_CROP_TRAIN": True,
-         "RANDOM_CROP_FILE_PREFIX": "random_crop_128x128x128_1.25x0.75x0.75_fake1.25_from_2.5mm_max", #"random_crop_128x128x128_1.25x0.75x0.75_fake1.25_from_5mm_max", # 5MM
+         "RANDOM_CROP_FILE_PREFIX": "random_crop_128x128x128_1.25x0.75x0.75", #"random_crop_128x128x128_1.25x0.75x0.75_fake1.25_from_5mm_max", # 5MM
          "RANDOM_CROP_SPACING": (1.25, 0.75, 0.75), #used in dataset.__getitem__ if using "fresh-cropped", 5MM
          "RANDOM_CROP_NCOPY": 20,
          "USE_5MM": False, # 5MM
-         "USE_2.5MM": True, # 2.5MM (Either 5/2.5mm is ok, but not both at the same time)
+         "USE_2.5MM": False, # 2.5MM (Either 5/2.5mm is ok, but not both at the same time)
          "ESTIMATE_5MM_ANCHOR": False, # if True, use ANCHORS_ORI to estimate ANCHORS_5MM rather than using ANCHORS_5MM directly
 
-         "DO_FP_REDUCTION": False,
+         "DO_FP_REDUCTION": True,
          "FP_REDUCTION_CROP_PREFIX": "false_positive", #"false_positive_fake_1.25_from_5mm_max", # 5MM 
          "FP_REDUCTION_CROP_NCOPY": 3, # 3 for original 1.25mm, and 5 for others
          #"FP_REDUCTION_TARGET_DATASET": "training", #WIP
@@ -154,6 +154,10 @@ TRAIN = {
          "FP_REDUCTION_INTERVAL": 1, # *1
          "FP_REDUCTION_MODE": "0,1", # 0,0 | *0,1 | 1,0 | 1,1 (cls_index, mix)
          "FP_REDUCTION_USE_ZERO_CONF": False, # whether to set conf in __create_label to 0 for fp; *False
+
+         "EXTRA_FP_USAGE": "eval_only", # "dataset"/"eval_only"/None
+
+
          # 2021/3/4 v1: (目前 "0,1" + No_use_zero_conf + "try fp reduction loss" 表現最好)
          # 2021/3/6: "0,1" + use_zero_conf has similar(same) performance as 2021/3/4
          # 2021/3/8: "1,1" + use_zero_conf has super bad result (cpm<0.3)

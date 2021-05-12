@@ -39,11 +39,11 @@ def make_negative_samples(save_crop, ncopy=1):
 
     for exp_name, fold_num, epoch in [
 
-        ('train_fake_1.25mm_no_fp_reduction_dry_run_f0', 0, 170),
-        ('train_fake_1.25mm_no_fp_reduction_dry_run_f1', 1, 272),
-        ('train_fake_1.25mm_no_fp_reduction_dry_run_f2', 2, 204),
-        ('train_fake_1.25mm_no_fp_reduction_dry_run_f3', 3, 289),
-        ('train_fake_1.25mm_no_fp_reduction_dry_run_f4', 4, 170),
+        ('train_fake_1.25mm_from_2.5mm_no_fp_reduction_dry_run_f0', 0, 200),
+        ('train_fake_1.25mm_from_2.5mm_no_fp_reduction_dry_run_f1', 1, 200),
+        ('train_fake_1.25mm_from_2.5mm_no_fp_reduction_dry_run_f2', 2, 200),
+        ('train_fake_1.25mm_from_2.5mm_no_fp_reduction_dry_run_f3', 3, 200),
+        ('train_fake_1.25mm_from_2.5mm_no_fp_reduction_dry_run_f4', 4, 200),
    
         ]:
 
@@ -124,12 +124,12 @@ def make_negative_samples(save_crop, ncopy=1):
                             current_pid = pid
                             c=1
                             
-                        pkl_name = os.path.join(folder_name, f"false_positive_fake_1.25_from_5mm_max_c{c}.pkl")
+                        pkl_name = os.path.join(folder_name, f"false_positive_fake_1.25_from_2.5mm_max_c{c}.pkl")
                         if save_crop:
                             with open(pkl_name, "wb") as f:
                                 pickle.dump(to_save, f)
                                 print("save to", pkl_name)
-                            save_slices_png(img, pjoin(folder_name, f"slices_view_fake_1.25_from_5mm_max_c{c}"))
+                            save_slices_png(img, pjoin(folder_name, f"slices_view_fake_1.25_from_2.5mm_max_c{c}"))
                 tqdm_bar.update()
 
 
@@ -236,5 +236,6 @@ def make_negative_samples_for_luna():
 
 if __name__ == "__main__":
     # please enable "do fp reduction" in cfg before running this
+    #make_negative_samples(save_crop=False, ncopy=5)
     make_negative_samples(save_crop=True, ncopy=5)
 

@@ -31,7 +31,7 @@ from dataset import Tumor, LungDataset
 from databuilder.yolo4dataset import YOLO4_3DDataset
 from tqdm import tqdm
 from apex import amp
-from global_variable import USE_LUNA, MASK_SAVED_PATH, NEGATIVE_NPY_SAVED_PATH
+from global_variable import USE_LUNA, MASK_SAVED_PATH, NEGATIVE_NPY_SAVED_PATH, ITERATIVE_FP_CROP_PATH
 
 class Trainer(object):
     def __init__(self, testing_mode, weight_path, checkpoint_save_dir, resume, gpu_id, accumulate, fp_16, writer, logger, crx_fold_num,
@@ -549,6 +549,7 @@ class Trainer(object):
                         self.evaluator.store_bbox(img_name+"_test", bboxes_prd)
                         valid_bbox = valid_bbox.cpu().tolist()
                         gt_lut[img_name] = valid_bbox
+                    
             
             txt = "Average time cost: {:.2f} sec.".format((time.time() - start_time)/len(self.test_dataloader))
             print(txt)
@@ -559,7 +560,7 @@ class Trainer(object):
                 #if self.do_fp_reduction:
                 #    area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, fp_bboxes_all_pid = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=True)
                 #else:
-                area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=False)
+                area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, _ = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=False)
             log_txt += txt + "\n" + sub_log_txt
             plt.savefig(os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
             if hasattr(self, "current_epoch"): # from train3D.py
@@ -569,6 +570,8 @@ class Trainer(object):
             with open(out_log_name, "w") as f:
                 f.write(log_txt)
             #print("SAVE IMG TO", os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
+
+
 
         end = time.time()
         logger.info("  ===cost time:{:.4f}s".format(end - start))
@@ -581,7 +584,91 @@ class Trainer(object):
         writer = self.writer
         logger = self.logger
 
-    def get_fp_for_reduction_batch(self, img_names, return_crop_only=False, topk=None): # batch_version
+    def iterative_update_fp_crops(self):
+        assert self.train_random_crop
+        new_fp_dataset = LungDataset.load(self.lung_dataset_name)
+        pids = [pid for _,_,pid in self.train_dataset.ori_dataset.data]
+        new_fp_dataset.get_data(pids)
+        new_fp_dataset.set_batch_1_eval(True, cfg.VAL["RANDOM_CROPPED_VOI_FIX_SPACING"])
+        new_fp_dataset.set_lung_voi()
+        if self.use_5mm or self.use_2d5mm:
+            if cfg.VAL["FAST_EVAL_PKL_NAME"] not in (False, None):
+                pkl_name = cfg.VAL["FAST_EVAL_PKL_NAME"]
+                assert type(pkl_name) == str, "Bad param for FAST_EVAL_PKL_NAME in cfg: '{}'".format(pkl_name)
+            else:
+                pkl_name = False
+            if self.use_5mm:
+                new_fp_dataset.set_5mm(True, pkl_name)
+            else: #2.5mm
+                new_fp_dataset.set_2d5mm(True, pkl_name)
+        new_fp_dataset = YOLO4_3DDataset(new_fp_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False, use_zero_conf=cfg.TRAIN["FP_REDUCTION_USE_ZERO_CONF"])
+        new_fp_data_loader = DataLoader(new_fp_dataset, batch_size=1, num_workers=cfg.VAL["NUMBER_WORKERS"], shuffle=False, pin_memory=False)
+        npy_dir = ITERATIVE_FP_CROP_PATH
+        new_fp_evaluator = Evaluator(self.model, showatt=False, pred_result_path=npy_dir, box_top_k=cfg.VAL["BOX_TOP_K"], conf_thresh=self.eval_conf_thresh)
+        #new_fp_evaluator.clear_predict_file() #not remove crop yet
+        #TODO: eval new crops
+        
+
+        with torch.no_grad():
+            start_time=time.time()
+            log_txt = ""
+            log_txt += f"Using eval_conf_thresh: {self.eval_conf_thresh}\n"
+            if 1: #for 640
+                npy_format = npy_dir + '/{}_test.npy'
+                n_batch = len(self.test_dataloader)
+                print("eval n_batch in new_fp_dataloader:", n_batch)
+                gt_lut = {}
+                for i, (imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, valid_bboxes)  in tqdm(enumerate(self.test_dataloader), total=n_batch):
+                    if (0):
+                        imgs = imgs[0]
+                        label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = \
+                            label_sbbox[0], label_mbbox[0], label_lbbox[0], sbboxes[0], mbboxes[0], lbboxes[0]
+                        img_names = [_[0] for _ in img_names]
+
+                    print("eval imgs input shape:", imgs.shape)
+                    if (0) and self.batch_1_eval:
+                        vimg = imgs.squeeze(0).squeeze(0).numpy()
+                        AnimationViewer(vimg, note="eval:{}".format(img_names[0]))
+                    imgs = imgs.to(self.device)
+                    for img, img_name, shape_before_pad, valid_bbox in zip(imgs, img_names, shapes_before_pad, valid_bboxes):
+                        #print("(Eval) Current img:", img_name)
+                        bboxes_prd, box_raw_data, sub_log_txt = self.evaluator.get_bbox(img, multi_test=False, flip_test=False, shape_before_pad=shape_before_pad)
+                        #print("bboxes_prd:", bboxes_prd)
+                        #print("type of bboxes_prd", type(bboxes_prd))
+                        #print("bboxes_prd max", bboxes_prd.max(axis=0))
+                        #print("box_raw_data:", box_raw_data)
+                        log_txt += sub_log_txt
+                        pr999_p_conf = np.sort(box_raw_data[:, 6].detach().cpu().numpy().flatten())[-8]
+                        mloss.append(pr999_p_conf)
+                        if len(bboxes_prd) > 0 and (not self.batch_1_eval):
+                            bboxes_prd[:, :6] = (bboxes_prd[:, :6] / img.size(1)) * cfg.VAL['TEST_IMG_BBOX_ORIGINAL_SIZE'][0]
+                        #self.evaluator.store_bbox(img_name+"_test", bboxes_prd)
+                        valid_bbox = valid_bbox.cpu().tolist()
+                        gt_lut[img_name] = valid_bbox
+                    
+            
+            txt = "Average time cost: {:.2f} sec.".format((time.time() - start_time)/len(self.test_dataloader))
+            print(txt)
+            annotation_file = "annotation_luna.txt" if USE_LUNA else "annotation_chung.txt"
+            if self.eval_random_crop:
+                area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou = calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, size_threshold=20, th_step=0.01, ori_dataset=self.test_dataset.ori_dataset, det_tp_iou_thresh=self.det_tp_iou_thresh)
+            else:
+                #if self.do_fp_reduction:
+                #    area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, fp_bboxes_all_pid = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=True)
+                #else:
+                area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, _ = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=False)
+            log_txt += txt + "\n" + sub_log_txt
+            plt.savefig(os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
+            if hasattr(self, "current_epoch"): # from train3D.py
+                out_log_name = os.path.join(self.checkpoint_save_dir, 'evaluate_log_e{}.txt'.format(self.current_epoch))
+            else: # from draw_froc.py
+                out_log_name = os.path.join(self.checkpoint_save_dir, 'evaluate_log.txt')
+            with open(out_log_name, "w") as f:
+                f.write(log_txt)
+            #print("SAVE IMG TO", os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
+        
+
+    def get_fp_for_reduction_batch(self, img_names, return_crop_only=False, topk=None, correct_fp_usage=False): # batch_version
         """
         fp_bboxes_all_pid: a dictionary, key=pid, value=fp_bboxes
         fp_bboxes: shape (X, 8), where 8 = pred_coor(6) + pred_conf(1) + pred_class_idx(1) [X differs due to postprocessing]
@@ -620,10 +707,21 @@ class Trainer(object):
             else:
                 pkl_name = False
             fp_dataset.set_2d5mm(True, pkl_name)
+        
+        if correct_fp_usage:
+            assert return_crop_only # workflow need this
+        
+        if (0): #debug
+            for i, (_,_,pid) in enumerate(fp_dataset.data):
+                print(pid)
+                if i==4:
+                    break
+            print("img_names:", img_names[:5]) # img_names look random
+            raise EOFError("Fp dataset's data") 
 
         fp_dataset.set_batch_1_eval(True, cfg.VAL["RANDOM_CROPPED_VOI_FIX_SPACING"])
         fp_dataset = YOLO4_3DDataset(fp_dataset, classes=[0,1], batch_1_eval=True)
-        fp_dataloader = DataLoader(fp_dataset, batch_size=1, num_workers=cfg.VAL["NUMBER_WORKERS"], pin_memory=False)
+        fp_dataloader = DataLoader(fp_dataset, batch_size=1, num_workers=cfg.VAL["NUMBER_WORKERS"], pin_memory=False, shuffle=False)
         fp_evaluator = Evaluator(self.model, showatt=False, pred_result_path=npy_dir, box_top_k=cfg.VAL["BOX_TOP_K"], conf_thresh=self.eval_conf_thresh)
         fp_evaluator.clear_predict_file()
 
@@ -638,18 +736,22 @@ class Trainer(object):
                 for i, (imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, valid_bboxes)  in tqdm(enumerate(fp_dataloader), total=n_batch, desc="fp getting"):
                     imgs = imgs.to(self.device)
                     for img, img_name, shape_before_pad, valid_bbox in zip(imgs, img_names, shapes_before_pad, valid_bboxes):
-                        
+                        if (0): #debug
+                            print("fp(1) pid:", img_name)
+                            continue
                         #print("(FP reduction) Current img:", img_name)
                         bboxes_prd, box_raw_data, sub_log_txt = fp_evaluator.get_bbox(img, multi_test=False, flip_test=False, shape_before_pad=shape_before_pad)
                         log_txt += sub_log_txt
                         fp_evaluator.store_bbox(img_name+"_test", bboxes_prd)
                         valid_bbox = valid_bbox.cpu().tolist()
                         gt_lut[img_name] = valid_bbox
+                #raise EOFError("End of fp(1)")
             
             #txt = "Average time cost: {:.2f} sec.".format((time.time() - start_time)/len(self.test_dataloader))
             #print(txt)
             #annotation_file = "annotation_luna.txt" if USE_LUNA else "annotation_chung.txt"
             area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, fp_bboxes_all_pid = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=True)
+            plt.close()
             log_txt += sub_log_txt
             #plt.savefig(os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
             #if hasattr(self, "current_epoch"): # from train3D.py
@@ -662,13 +764,19 @@ class Trainer(object):
             end = time.time()
             #logger.info("  ===cost time:{:.4f}s".format(end - start))
 
+
         # (2) crop and make label of those fp bboxes
         n_batch = len(fp_dataloader)
         cropped_imgs = []
         cropped_boxes = []
         cropped_names = []
+        uncropped_boxes = []
         for i, (imgs, _, _, _, _, _, _, img_names, shapes_before_pad, valid_bboxes)  in tqdm(enumerate(fp_dataloader), total=n_batch, desc="fp cropping"):
             for img, img_name, shape_before_pad, valid_bbox in zip(imgs, img_names, shapes_before_pad, valid_bboxes):
+                if (0): #debug
+                    print("fp(2) pid:", img_name)
+                    continue
+
                 if topk==None:
                     k=5 # top k fp to **choose** in "random_crop_3D"
                 else:
@@ -682,6 +790,7 @@ class Trainer(object):
                     continue
                 if topk==None:
                     to_crop_fp = random.choice(to_crop_fp).unsqueeze_(0)
+
                 for j in range(len(to_crop_fp)):
                     try:
                         cropped_img, cropped_box = random_crop.random_crop_3D(img, to_crop_fp[j].unsqueeze(0), cfg.TRAIN["TRAIN_IMG_SIZE"], cfg.TRAIN["TRAIN_IMG_SIZE"])
@@ -707,12 +816,14 @@ class Trainer(object):
                     cropped_imgs.append(cropped_img.cpu())
                     cropped_boxes.append(cropped_box.cpu().numpy())
                     cropped_names.append(img_name)
-
+                    uncropped_boxes.append(to_crop_fp[j])
         
         if return_crop_only: # return numpy fp crop and then exit (not for training)
             out_imgs = [crop.squeeze_(-1).numpy() for crop in cropped_imgs]
             out_boxes = [boxes[:,:-2].tolist() for boxes in cropped_boxes]
             out_names = cropped_names
+            if correct_fp_usage:
+                return out_imgs, out_boxes, out_names, uncropped_boxes
             return out_imgs, out_boxes, out_names
 
 

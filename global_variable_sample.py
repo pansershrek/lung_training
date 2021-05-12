@@ -8,6 +8,9 @@ MASK_SAVED_PATH = r"E:/LungData/AutoMask"
 LUNG_DATASET_PKL_PATH = r"D:/CH/LungDetection/training/lung_dataset_20210118.pkl"  # mostly lung_dataset_20210118.pkl
 NEGATIVE_NPY_SAVED_PATH = r"E:/LungData/NegativeSamples"
 
+EXTRA_FP_EXCEL_PATH = r"D:/CH/LungDetection/not_fp_1.25mm.xlsx"
+ITERATIVE_FP_CROP_PATH = r"E:/LungData/iterative_fp_tmp"
+
 #REPEATABLE_SERIES = () #MRI資料中，可允許重複出現的series種類
 
 USE_LUNA = False  ##記得要同時改Anchorbox3D
