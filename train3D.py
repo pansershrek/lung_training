@@ -43,8 +43,10 @@ if __name__ == "__main__":
     parser.add_argument('--crx_valid', type=int, default=0)
     parser.add_argument('--dataset_name', type=str, default=CURRENT_DATASET_PKL_PATH)
     parser.add_argument('--eval_interval', type=int, default=-1)
-    parser.add_argument('--npy_name', type=str, default="hu+norm_256x256x256_fp16.npy")
+    parser.add_argument('--npy_name', type=str, default=None) #default="hu+norm_256x256x256_fp16.npy")
     parser.add_argument('--testing_mode', type=int, default=0)
+    parser.add_argument('--update_fp_first', action='store_true',default=False,  help='whether update iterative fp crops firstly')
+
     opt = parser.parse_args()
     writer = SummaryWriter(log_dir=opt.log_path + '/' + opt.exp_name)
     logger = Logger(log_file_name=opt.log_path + '/' + opt.exp_name + '/log.txt', log_level=logging.DEBUG, logger_name='YOLOv4').get_log()
@@ -85,5 +87,6 @@ if __name__ == "__main__":
             eval_interval=opt.eval_interval,
             npy_name=opt.npy_name,
             )
-
+    if opt.update_fp_first:
+        trainer.iterative_update_fp_crops()
     trainer.train()

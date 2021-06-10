@@ -1,37 +1,38 @@
 import logging
 import utils.gpu as gpu
-from model.build_model import Build_Model
-from model.loss.yolo_loss import YoloV4Loss
-#from model.loss.yolo_loss_brucetu import YoloV4Loss
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
-import utils.datasets as data
 import time
 import random
 import argparse
+from torch.utils.tensorboard import SummaryWriter
+import shutil
+import os
+import pickle
+from os.path import join as pjoin
+from tqdm import tqdm
+from apex import amp
+
+import utils.datasets as data
+from model.build_model import Build_Model
+from model.loss.yolo_loss import YoloV4Loss
+#from model.loss.yolo_loss_brucetu import YoloV4Loss
 from eval.evaluator import *
 from eval.froc import calculate_FROC, calculate_FROC_randomcrop
 from utils.tools import *
-from torch.utils.tensorboard import SummaryWriter
 import config.yolov4_config as cfg
 from utils import cosine_lr_scheduler
 from utils.log import Logger
-import shutil
-import os
-from os.path import join as pjoin
 import random_crop
 from utils_hsz import AnimationViewer
 from adabelief_pytorch import AdaBelief
 #from eval_coco import *
 #from eval.cocoapi_evaluator import COCOAPIEvaluator
-
 #from databuilder.abus import ABUSDetectionDataset
 from dataset import Tumor, LungDataset
 from databuilder.yolo4dataset import YOLO4_3DDataset
-from tqdm import tqdm
-from apex import amp
-from global_variable import USE_LUNA, MASK_SAVED_PATH, NEGATIVE_NPY_SAVED_PATH, ITERATIVE_FP_CROP_PATH
+from global_variable import CURRENT_DATASET_PKL_PATH, USE_LUNA, MASK_SAVED_PATH, NEGATIVE_NPY_SAVED_PATH, ITERATIVE_FP_CROP_PATH, NPY_SAVED_PATH
 
 class Trainer(object):
     def __init__(self, testing_mode, weight_path, checkpoint_save_dir, resume, gpu_id, accumulate, fp_16, writer, logger, crx_fold_num,
@@ -75,13 +76,16 @@ class Trainer(object):
         #self.fp_reduction_target = cfg.TRAIN["FP_REDUCTION_TARGET_DATASET"] 
         self.fp_reduction_start_epoch = cfg.TRAIN["FP_REDUCTION_START_EPOCH"]
         self.fp_reduction_interval = cfg.TRAIN["FP_REDUCTION_INTERVAL"]
+        self.do_update_fp_crops = cfg.TRAIN["ITERATIVE_FP_UPDATE"]
+        self.update_fp_crops_start_epoch = cfg.TRAIN["ITERATIVE_FP_UPDATE_START_EPOCH"]
         if self.do_fp_reduction:
             #assert not self.eval_random_crop, "FP_REDUCTION CAN ONLY BE DONE WHEN USING THE WHOLE IMAGE AS EVAL DATA!"
             #assert self.testing_mode != 1 ## only debug/train/validation allowed
             #assert self.fp_reduction_target.lower() in ["training", "testing"]
             self.empty_dataset = LungDataset.load(dataset_name) # empty means "didn't get_data"
             assert self.fp_reduction_interval > 0
-        
+            assert self.update_fp_crops_start_epoch >= self.fp_reduction_start_epoch
+        self.merging_train_and_ori_fp_set = True
         
 
         
@@ -92,6 +96,7 @@ class Trainer(object):
         train_data, validation_data, test_data = dataset.make_kfolds_using_pids(num_k_folds=5, k_folds_seed=123, current_fold=self.crx_fold_num, valid_test_split=True, portion_list=[3,1,1])
         train_dataset = LungDataset.load(dataset_name)
         train_dataset.data = train_data
+        self.train_data_original = train_data
         if self.train_random_crop:
             train_dataset.set_random_crop(self.random_crop_file_prefix, self.random_crop_ncopy, True)
         
@@ -172,7 +177,11 @@ class Trainer(object):
             assert self.train_random_crop
             train_fp_dataset = LungDataset.load(dataset_name)
             train_fp_dataset.data = train_data
-            train_fp_dataset.set_random_crop(cfg.TRAIN["FP_REDUCTION_CROP_PREFIX"], cfg.TRAIN["FP_REDUCTION_CROP_NCOPY"], True, NEGATIVE_NPY_SAVED_PATH, cfg.TRAIN["FP_REDUCTION_MODE"])
+            if cfg.TRAIN["CHANGE_FP_REDUCTION_FOLDER_ROOT"]:
+                fp_folder_path = NPY_SAVED_PATH
+            else:
+                fp_folder_path = NEGATIVE_NPY_SAVED_PATH
+            train_fp_dataset.set_random_crop(cfg.TRAIN["FP_REDUCTION_CROP_PREFIX"], cfg.TRAIN["FP_REDUCTION_CROP_NCOPY"], True, fp_folder_path, cfg.TRAIN["FP_REDUCTION_MODE"])
             self.train_fp_dataset = YOLO4_3DDataset(train_fp_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False, use_zero_conf=cfg.TRAIN["FP_REDUCTION_USE_ZERO_CONF"])
             self.train_fp_data_loader = DataLoader(self.train_fp_dataset,
                                            batch_size=cfg.TRAIN["BATCH_SIZE"],
@@ -313,17 +322,8 @@ class Trainer(object):
                     label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = \
                         label_sbbox[0], label_mbbox[0], label_lbbox[0], sbboxes[0], mbboxes[0], lbboxes[0]
                     img_names = [_[0] for _ in img_names]
-                
 
-                # fp reduction (batch_version, slow and buggy)
-                #if do_fp_reduction_this_epoch:
-                #    fp_data = self.get_fp_for_reduction_batch(img_names)
-                #    cat = lambda t1,t2: torch.cat([t1,t2], dim=0) if type(t1)==torch.Tensor==type(t2) else t1+t2
-                #    merged_data = [cat(t1,t2) for t1,t2 in zip(batched_data, fp_data)]
-                #    imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, _ = merged_data
-                #    self.model.train() # turn from evaluating back to training
-
-                # fp reduction (load npy version)
+                # fp reduction (load npy version) (still slow)
                 if self.do_fp_reduction and do_fp_reduction_this_epoch:
                     fp_data = next(fp_iterator)
                     cat = lambda t1,t2: torch.cat([t1,t2], dim=0) if type(t1)==torch.Tensor==type(t2) else t1+t2
@@ -423,6 +423,22 @@ class Trainer(object):
                         self.__save_model_weights(epoch, cpm_dist)
                     logger.info('save weights done')
                     logger.info("  ===test CPM:{:.3f}".format(cpm_dist))
+                if self.do_fp_reduction and self.do_update_fp_crops and epoch>=self.update_fp_crops_start_epoch:
+                    # (1) merge original fp data into training sets (only merge once!!) before update fp crops
+                    if (self.merging_train_and_ori_fp_set):
+                        img_size = self.train_dataset.img_size
+                        assert img_size == self.train_fp_dataset.img_size
+                        self.train_dataset = torch.utils.data.ConcatDataset([self.train_dataset, self.train_fp_dataset])
+                        self.train_dataset.img_size = img_size
+                        self.train_dataloader = DataLoader(self.train_dataset,
+                                                            batch_size=cfg.TRAIN["BATCH_SIZE"]*2,
+                                                            num_workers=cfg.TRAIN["NUMBER_WORKERS"],
+                                                            shuffle=True, pin_memory=False
+                                                            )
+                        self.merging_train_and_ori_fp_set = False
+                    # (2) make new fp crops and new fp dataset (update interval == validation interval*2)
+                    if (epoch % (self.eval_interval*2) == 0):
+                        self.iterative_update_fp_crops()
 
             end = time.time()
             logger.info("  ===cost time:{:.4f}s".format(end - start))
@@ -430,7 +446,7 @@ class Trainer(object):
                 break
         logger.info("=====Training Finished.   best_test_CPM:{:.3f}%====".format(self.best_cpm))
 
-    def evaluate(self, return_box=False):
+    def evaluate(self, return_box=False, do_iterative_fp_crop=False):
         logger = self.logger
         logger.info("Evaluate start,img size is: {},batchsize is: {:d},work number is {:d}".format(cfg.VAL["TEST_IMG_SIZE"], cfg.VAL["BATCH_SIZE"], cfg.VAL["NUMBER_WORKERS"]))
         logger.info("Test datasets number is : {}".format(len(self.test_dataloader)))
@@ -560,7 +576,7 @@ class Trainer(object):
                 #if self.do_fp_reduction:
                 #    area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, fp_bboxes_all_pid = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=True)
                 #else:
-                area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, _ = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=False)
+                area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, fp_bboxes_all_pid = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=True)
             log_txt += txt + "\n" + sub_log_txt
             plt.savefig(os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
             if hasattr(self, "current_epoch"): # from train3D.py
@@ -569,9 +585,6 @@ class Trainer(object):
                 out_log_name = os.path.join(self.checkpoint_save_dir, 'evaluate_log.txt')
             with open(out_log_name, "w") as f:
                 f.write(log_txt)
-            #print("SAVE IMG TO", os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
-
-
 
         end = time.time()
         logger.info("  ===cost time:{:.4f}s".format(end - start))
@@ -584,11 +597,17 @@ class Trainer(object):
         writer = self.writer
         logger = self.logger
 
-    def iterative_update_fp_crops(self):
+    def iterative_update_fp_crops(self, topk=5, crop_save_folder_root=ITERATIVE_FP_CROP_PATH, fp_bbox_folder_root="fp_reduction_tmp"):
+        """
+        Crop new fp crops based on GT and current FP bboxes
+        """
         assert self.train_random_crop
         new_fp_dataset = LungDataset.load(self.lung_dataset_name)
-        pids = [pid for _,_,pid in self.train_dataset.ori_dataset.data]
-        new_fp_dataset.get_data(pids)
+        #pids = [pid for _,_,pid in self.train_dataset.ori_dataset.data]
+        #new_fp_dataset.get_data(pids)
+        new_fp_dataset.data = self.train_data_original
+        #if (1): # debug
+        #    pids = pids[:5]
         new_fp_dataset.set_batch_1_eval(True, cfg.VAL["RANDOM_CROPPED_VOI_FIX_SPACING"])
         new_fp_dataset.set_lung_voi()
         if self.use_5mm or self.use_2d5mm:
@@ -601,71 +620,120 @@ class Trainer(object):
                 new_fp_dataset.set_5mm(True, pkl_name)
             else: #2.5mm
                 new_fp_dataset.set_2d5mm(True, pkl_name)
-        new_fp_dataset = YOLO4_3DDataset(new_fp_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False, use_zero_conf=cfg.TRAIN["FP_REDUCTION_USE_ZERO_CONF"])
+        new_fp_dataset = YOLO4_3DDataset(new_fp_dataset, classes=[0, 1], img_size=cfg.VAL["TEST_IMG_SIZE"], cache_size=0, batch_1_eval=cfg.VAL["BATCH_1_EVAL"])
         new_fp_data_loader = DataLoader(new_fp_dataset, batch_size=1, num_workers=cfg.VAL["NUMBER_WORKERS"], shuffle=False, pin_memory=False)
-        npy_dir = ITERATIVE_FP_CROP_PATH
-        new_fp_evaluator = Evaluator(self.model, showatt=False, pred_result_path=npy_dir, box_top_k=cfg.VAL["BOX_TOP_K"], conf_thresh=self.eval_conf_thresh)
-        #new_fp_evaluator.clear_predict_file() #not remove crop yet
-        #TODO: eval new crops
-        
+        new_fp_evaluator = Evaluator(self.model, showatt=False, pred_result_path=fp_bbox_folder_root, box_top_k=cfg.VAL["BOX_TOP_K"], conf_thresh=self.eval_conf_thresh)
+        new_fp_evaluator.clear_predict_file()
 
+        # (1) run eval on training set to generate bbox files
         with torch.no_grad():
             start_time=time.time()
-            log_txt = ""
-            log_txt += f"Using eval_conf_thresh: {self.eval_conf_thresh}\n"
-            if 1: #for 640
-                npy_format = npy_dir + '/{}_test.npy'
-                n_batch = len(self.test_dataloader)
-                print("eval n_batch in new_fp_dataloader:", n_batch)
+            if 1: 
+                npy_format = fp_bbox_folder_root + '/{}_test_fp_tmp.npy'
+                n_batch = len(new_fp_data_loader)
                 gt_lut = {}
-                for i, (imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, valid_bboxes)  in tqdm(enumerate(self.test_dataloader), total=n_batch):
-                    if (0):
-                        imgs = imgs[0]
-                        label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = \
-                            label_sbbox[0], label_mbbox[0], label_lbbox[0], sbboxes[0], mbboxes[0], lbboxes[0]
-                        img_names = [_[0] for _ in img_names]
-
-                    print("eval imgs input shape:", imgs.shape)
-                    if (0) and self.batch_1_eval:
-                        vimg = imgs.squeeze(0).squeeze(0).numpy()
-                        AnimationViewer(vimg, note="eval:{}".format(img_names[0]))
+                for i, (imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, valid_bboxes)  in tqdm(enumerate(new_fp_data_loader), total=n_batch, desc="iterative fp getting"):
                     imgs = imgs.to(self.device)
                     for img, img_name, shape_before_pad, valid_bbox in zip(imgs, img_names, shapes_before_pad, valid_bboxes):
-                        #print("(Eval) Current img:", img_name)
-                        bboxes_prd, box_raw_data, sub_log_txt = self.evaluator.get_bbox(img, multi_test=False, flip_test=False, shape_before_pad=shape_before_pad)
-                        #print("bboxes_prd:", bboxes_prd)
-                        #print("type of bboxes_prd", type(bboxes_prd))
-                        #print("bboxes_prd max", bboxes_prd.max(axis=0))
-                        #print("box_raw_data:", box_raw_data)
-                        log_txt += sub_log_txt
-                        pr999_p_conf = np.sort(box_raw_data[:, 6].detach().cpu().numpy().flatten())[-8]
-                        mloss.append(pr999_p_conf)
-                        if len(bboxes_prd) > 0 and (not self.batch_1_eval):
-                            bboxes_prd[:, :6] = (bboxes_prd[:, :6] / img.size(1)) * cfg.VAL['TEST_IMG_BBOX_ORIGINAL_SIZE'][0]
-                        #self.evaluator.store_bbox(img_name+"_test", bboxes_prd)
+                        if (0): #debug
+                            print("fp(1) pid:", img_name)
+                            continue
+                        #print("(FP reduction) Current img:", img_name)
+                        bboxes_prd, box_raw_data, sub_log_txt = new_fp_evaluator.get_bbox(img, multi_test=False, flip_test=False, shape_before_pad=shape_before_pad)
+                        #log_txt += sub_log_txt
+                        new_fp_evaluator.store_bbox(img_name+"_test_fp_tmp", bboxes_prd)
                         valid_bbox = valid_bbox.cpu().tolist()
                         gt_lut[img_name] = valid_bbox
-                    
-            
-            txt = "Average time cost: {:.2f} sec.".format((time.time() - start_time)/len(self.test_dataloader))
-            print(txt)
-            annotation_file = "annotation_luna.txt" if USE_LUNA else "annotation_chung.txt"
-            if self.eval_random_crop:
-                area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou = calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, size_threshold=20, th_step=0.01, ori_dataset=self.test_dataset.ori_dataset, det_tp_iou_thresh=self.det_tp_iou_thresh)
-            else:
-                #if self.do_fp_reduction:
-                #    area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, fp_bboxes_all_pid = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=True)
-                #else:
-                area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, _ = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=False)
-            log_txt += txt + "\n" + sub_log_txt
-            plt.savefig(os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
-            if hasattr(self, "current_epoch"): # from train3D.py
-                out_log_name = os.path.join(self.checkpoint_save_dir, 'evaluate_log_e{}.txt'.format(self.current_epoch))
-            else: # from draw_froc.py
-                out_log_name = os.path.join(self.checkpoint_save_dir, 'evaluate_log.txt')
-            with open(out_log_name, "w") as f:
-                f.write(log_txt)
-            #print("SAVE IMG TO", os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
+                area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, fp_bboxes_all_pid = calculate_FROC(gt_lut, fp_bbox_folder_root, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=True)
+                plt.close()
+                #log_txt += sub_log_txt
+
+                end = time.time()
+ 
+
+        #  (2) crop and make label of those fp bboxes
+        n_batch = len(new_fp_data_loader)
+        for i, (imgs, _, _, _, _, _, _, img_names, shapes_before_pad, valid_bboxes)  in tqdm(enumerate(new_fp_data_loader), total=n_batch, desc="iterative fp update cropping"):
+            for img, img_name, shape_before_pad, valid_bbox in zip(imgs, img_names, shapes_before_pad, valid_bboxes):
+                if (0): #debug
+                    print("iterative fp: pid =", img_name)
+                    continue
+
+                if topk==None:
+                    k=5 # top k fp to **choose** in "random_crop_3D"
+                else:
+                    k=topk
+                img = img.squeeze_(-1).to(self.device)
+                fp_bboxes = fp_bboxes_all_pid[img_name] # shape (?, 8)
+                top_k_hard_fp_idx = fp_bboxes[:, 6].argsort()[-k:][::-1]
+                top_k_hard_fp = fp_bboxes[top_k_hard_fp_idx] # shape (k, 8)
+                to_crop_fp = torch.tensor(top_k_hard_fp[:,:6], device=self.device, dtype=torch.float32)
+                if len(to_crop_fp)==0: #no fp
+                    continue
+                if topk==None:
+                    to_crop_fp = random.choice(to_crop_fp).unsqueeze_(0) # (1,6) or (k,6)
+                suffix = torch.zeros((to_crop_fp.shape[0], 2), dtype=torch.float32, device=self.device)
+                suffix[:,-1] = 1 # cls=0, mix=1
+                to_crop_fp = torch.cat([to_crop_fp, suffix], dim=1)
+                
+                assert to_crop_fp.shape[-1]==8
+
+                also_crop_boxes = torch.tensor(gt_lut[img_name], dtype=torch.float32, device=self.device) # (n,8)
+                for j in range(len(to_crop_fp)): # range(k)
+                    try:
+                        cropped_img, cropped_box = random_crop.random_crop_3D(img, to_crop_fp[j].unsqueeze(0), cfg.TRAIN["TRAIN_IMG_SIZE"], cfg.TRAIN["TRAIN_IMG_SIZE"], also_crop_boxes=also_crop_boxes)
+                    except Exception as e:
+                        print("Encounter error in random crop: {}".format(e.__repr__()))
+                        raise
+                        continue         
+                    cropped_img, cropped_box = cropped_img[0], cropped_box[0] # only remove list, shape (C, new_d, new_h, new_w)
+                    if (0) and j==0: # random crop debug view
+                        view_img = cropped_img.squeeze(0).cpu().numpy()
+                        view_box = cropped_box[:,:6].tolist()
+                        AnimationViewer(view_img, view_box, "fp crop")
+                    cropped_img = cropped_img.squeeze_(0).unsqueeze_(-1) # (1,Z,Y,X) -> (Z,Y,X,1)            
+                    ## mode
+                    if (0): #old method (fp_mode not considered during random cropping)
+                        n_box = cropped_box.shape[0]
+                        fp_mode = cfg.TRAIN["FP_REDUCTION_MODE"] # 0,0 | 0,1 | 1,0 | 1,1 (cls_index, mix)
+                        assert fp_mode in ("0,1", "1,1")
+                        conf_cls_label = torch.ones((n_box,2), device=self.device) #  cls == 1 and mix == 1
+                        if fp_mode == "0,1": # cls_idx == 0
+                            #conf_cls_label[:,1] = 0 #ori
+                            conf_cls_label[:,0] = 0
+                        cropped_box = torch.cat([cropped_box, conf_cls_label], dim=1)
+                    else: # (fp mode already considered in random cropping)
+                        cropped_box = cropped_box   
+                    out_img = cropped_img.squeeze(-1).cpu().numpy()
+                    out_bboxes = cropped_box.tolist()
+                    to_save = (out_img, out_bboxes)
+                    # save
+                    folder_name = os.path.join(crop_save_folder_root, str(img_name))
+                    name = "iterative_fp_crops_tmp_c{}.pkl".format(j+1)
+                    name = os.path.join(folder_name, name)
+                    if not os.path.exists(folder_name):
+                        os.makedirs(folder_name, exist_ok=True)
+                    with open(name, "wb") as f:
+                        pickle.dump(to_save, f)
+        # make and update new fp dataset
+        train_fp_dataset = LungDataset.load(self.lung_dataset_name)
+        train_fp_dataset.data = self.train_data_original
+        #pids = [pid for _,_,pid in self.train_dataset.ori_dataset.data]
+        #train_fp_dataset.get_data(pids)
+        train_fp_dataset.set_random_crop("iterative_fp_crops_tmp", topk, True, crop_save_folder_root, None)
+        self.train_fp_dataset = YOLO4_3DDataset(train_fp_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False, use_zero_conf=cfg.TRAIN["FP_REDUCTION_USE_ZERO_CONF"])
+        self.train_fp_data_loader = DataLoader(self.train_fp_dataset,
+                                    batch_size=cfg.TRAIN["BATCH_SIZE"],
+                                    num_workers=cfg.TRAIN["NUMBER_WORKERS"]//2,
+                                    shuffle=True, pin_memory=False
+                                    )
+        #for img, box, pid in self.train_dataset.ori_dataset:
+        #    print(pid, img.shape)
+
+
+
+        
+
         
 
     def get_fp_for_reduction_batch(self, img_names, return_crop_only=False, topk=None, correct_fp_usage=False): # batch_version
@@ -837,16 +905,8 @@ class Trainer(object):
         assert len(tmp_dataloader) == 1
         for i, (fp_imgs, fp_label_sbbox, fp_label_mbbox, fp_label_lbbox, fp_sbboxes, fp_mbboxes, fp_lbboxes, img_names, shapes_before_pad, _)  in enumerate(tmp_dataloader):
             return fp_imgs, fp_label_sbbox, fp_label_mbbox, fp_label_lbbox, fp_sbboxes, fp_mbboxes, fp_lbboxes, img_names, shapes_before_pad, _
-            
-            
-            
-
-
 
                 
-
-
-
 class FastImageDataset():
     def __init__(self, imgs, boxes, pids):
         self.imgs = imgs
@@ -858,6 +918,69 @@ class FastImageDataset():
     def __len__(self):
         return len(self.imgs)
     
+
+if __name__ == "__main__":
+    pass
+    #raise EOFError()
+    weight_path_tuple = ('train_rc_config_5.6.5_resnest_shallower_f1', 1, 300)
+    resume = False
+    exp_name = "debug"
+    crx_fold_num = weight_path_tuple[1] if type(weight_path_tuple)==tuple else 1
+    eval_interval = 1
+    weight_path = 'checkpoint/{}/backup_epoch{}.pt'.format(weight_path_tuple[0], weight_path_tuple[2]) if type(weight_path_tuple)==tuple else None
+    trainer = Trainer(testing_mode=0,
+                        weight_path=weight_path,
+                        checkpoint_save_dir='checkpoint/' + exp_name,
+                        resume=resume,
+                        gpu_id=0,
+                        accumulate=1,
+                        fp_16=False,
+                        writer = SummaryWriter(log_dir='log/' + exp_name),
+                        logger = Logger(log_file_name='log/' + exp_name + '/log.txt', log_level=logging.DEBUG, logger_name='YOLOv4').get_log(),
+                        crx_fold_num=crx_fold_num,
+                        dataset_name=CURRENT_DATASET_PKL_PATH,
+                        eval_interval=eval_interval,
+                        npy_name=None)
+
+    trainer.do_fp_reduction = True
+    trainer.do_update_fp_crops = True
+    print(len(trainer.train_dataset))
+    assert trainer.train_dataset.img_size == trainer.train_fp_dataset.img_size
+    img_size = trainer.train_dataset.img_size
+    trainer.train_dataset = torch.utils.data.ConcatDataset([trainer.train_dataset, trainer.train_fp_dataset])
+    trainer.train_dataset.img_size = img_size
+    trainer.train_dataloader = DataLoader(trainer.train_dataset,
+                                           batch_size=cfg.TRAIN["BATCH_SIZE"]*2,
+                                           num_workers=cfg.TRAIN["NUMBER_WORKERS"],
+                                           shuffle=True, pin_memory=False
+                                           )
+    print(len(trainer.train_dataset))
+    trainer.train()
+    #trainer.evaluate()
+    #for img, box, pid in trainer.train_dataset.ori_dataset:
+    #    print(pid, img.shape)
+    
+    """for imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, valid_bbox in trainer.train_fp_data_loader:
+        old_im = imgs[0].squeeze(0).cpu().numpy()
+        im = img_names[0]
+        break
+    print("img_name", im)
+
+    trainer.iterative_update_fp_crops()
+
+    for imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, valid_bbox in trainer.train_fp_data_loader:
+        for i, img_name in enumerate(img_names):
+            if img_name == im:
+                AnimationViewer(old_im, note="old")
+                AnimationViewer(imgs[i].squeeze(0).cpu().numpy(), note="new")
+                break
+            else:
+                print("new img:", img_name, "!=", im)"""
+    
+
+
+
+
 
 
         

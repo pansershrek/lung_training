@@ -147,15 +147,20 @@ TRAIN = {
          "ESTIMATE_5MM_ANCHOR": False, # if True, use ANCHORS_ORI to estimate ANCHORS_5MM rather than using ANCHORS_5MM directly
 
          "DO_FP_REDUCTION": True,
-         "FP_REDUCTION_CROP_PREFIX": "false_positive", #"false_positive_fake_1.25_from_5mm_max", # 5MM 
-         "FP_REDUCTION_CROP_NCOPY": 3, # 3 for original 1.25mm, and 5 for others
+         "FP_REDUCTION_CROP_PREFIX": "another_data_128x128x128_1.25x0.75x0.75", #"false_positive", #"false_positive_fake_1.25_from_5mm_max", # 5MM 
+         "FP_REDUCTION_CROP_NCOPY": 5, # 3 for original 1.25mm, and 5 for others
          #"FP_REDUCTION_TARGET_DATASET": "training", #WIP
-         "FP_REDUCTION_START_EPOCH": 150,  # *150
+         "FP_REDUCTION_START_EPOCH": 100,  # *150, 2, *100
          "FP_REDUCTION_INTERVAL": 1, # *1
          "FP_REDUCTION_MODE": "0,1", # 0,0 | *0,1 | 1,0 | 1,1 (cls_index, mix)
          "FP_REDUCTION_USE_ZERO_CONF": False, # whether to set conf in __create_label to 0 for fp; *False
 
-         "EXTRA_FP_USAGE": "eval_only", # "dataset"/"eval_only"/None
+         "EXTRA_FP_USAGE": "eval_only", # "eval_only"/None  # whether to consider extra tp/fp during testing
+         "CHANGE_FP_REDUCTION_FOLDER_ROOT": True, # if True, set NPY_SAVED_PATH as root folder (used mainly for "another_data"), else NEGATIVE_NPY_SAVED_PATH
+         "ITERATIVE_FP_UPDATE": True, # whether update fp crops every 10000 steps
+         "ITERATIVE_FP_UPDATE_START_EPOCH": 200, # *200
+
+         "HORIZONTAL_FLIP_RATE": 0.5, # 0.5. *0.0 prob to flip crops horizontally during training (only be appllied for random_crops dataset)
 
 
          # 2021/3/4 v1: (目前 "0,1" + No_use_zero_conf + "try fp reduction loss" 表現最好)
@@ -178,7 +183,7 @@ VAL = {
         "NMS_THRESH": 0.15, #0.15, *0.3, 0.45 # iou_thresh in utils.tools.nms (if two bbox has iou > thresh, discard one of them)
         "BOX_TOP_K": 512, # highest number of bbox after nms # *256, 512
         "TP_IOU_THRESH": 0.15, # iou threshold to view a predicted bbox as TP # *0.15, 0.3
-        "NODULE_RANKING_STRATEGY": "conf_only", # conf_only|conf+class
+        "NODULE_RANKING_STRATEGY": "conf_only", # conf_only|conf+class (not much difference in cpm)
 
         "BATCH_SIZE": 1, # 1 or 8
 
@@ -249,9 +254,11 @@ MODEL = {#"ANCHORS":[[(1.25, 1.625), (2.0, 3.75), (4.125, 2.875)],  # Anchors fo
          "RESNEST_STEM_WIDTH": 16, # similar to stem_channel, just a little bit different
          "RESNEST_EXPANSION": 2,  # orginal: 4 (higher -> less param)
          "RESNEST_FEATURE_CHANNELS": (24, 64, 128), # length == #_stages-1 == 3
-         "RESNEST_BLOCKS_PER_STAGE": (2, 3, 3, 3), # length == #_stages == 4
+         "RESNEST_BLOCKS_PER_STAGE": (2,3,3,3), # length == #_stages == 4 (default: 2,3,3,3)
          "RESNEST_STRIDE_PER_LAYER": (1, 2, 2),
          "RESNEST_EXTRA_ATTENTION": None, #"SEnetConv", #attention type:SEnet, SEnetConv, CBAM or NONE
+         "RESNEST_GROUPS": 2, # default: 1
+         "RESNEST_USE_CSP": True, # default: False
          }
 
 def _check():
@@ -297,7 +304,10 @@ UPDATE_NOTE:
 13-pre: Try "NODULE_RANKING_STRATEGY": "conf+class", and it has higher cpm (but for consistency, the following experiment will use normal strategy if not otherwise stated)
 13. Try SCNet (self calibration network at CVPR 2020) + ResNeST (SCResNeSt) + SE block (inference time?) (similar result or even poorer)
 14. Try fake 1.25mm from 2.5mm (ResNest, no attention)
+15. Another TP/FP data (different_fp_data is loaded )
+16. Iterative FP-update during fp-reduction
+17. Try shallower model (1,1,1,1) Resnest
 
 WHAT'S NEW:
-** Try fake 1.25mm from 2.5mm (ResNest, no attention)
+** Try shallower model (1,1,1,1) Resnest
 """

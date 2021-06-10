@@ -175,7 +175,9 @@ class LungDataset(Dataset):
                 else: # rows with coordinate and no comment
                     comments=[]
                     valid=True
+            pid = str( df.iloc[r, col_case] )
             if valid:
+                #continue # debug
                 comments = "/".join(comments)
                 y1 = df.iloc[r, col_top_left_y]
                 y2 = df.iloc[r, col_bottom_right_y]
@@ -212,6 +214,9 @@ class LungDataset(Dataset):
                     #msg="Repeated pid '{}' detected when forming dataset".format(pid)
                     #warnings.warn(msg)
                     self.pid_to_excel_r_relation[pid].append(excel_r)
+            else: #invalid debug
+                pass
+                #print("pid={} at excel_r={} is invalid".format(pid, excel_r))
 
     def set_batch_1_eval(self, batch_1_eval, equal_spacing):
         assert batch_1_eval in (True, False)
@@ -304,12 +309,19 @@ class LungDataset(Dataset):
                         bboxes[..., -2] = 1
                     elif self.random_crop_bbox_mode == "0,0":
                         pass # already are zeros
+            
+            flip_rate = cfg.TRAIN["HORIZONTAL_FLIP_RATE"]
+            if random.random() <= flip_rate: #random flipping
+                img = img.flip([2]) # (D,H,W,1) -> (D,H, -W, 1) [i.e., horizontal flip]
+                W = img.shape[2]
+                bboxes[:, 2:6:3] = (W-1) - bboxes[:, 2:6:3] # x1'=(W-1)-x1 ; x2'=(W-1)-x2 < x1'
 
             if (0): #debug
                 print("pid={}, copy#={}".format(pid, c+1))
                 view_img = img.squeeze(-1).numpy()
                 view_box = [bbox[:6] for bbox in bboxes.tolist()]
                 utils_hsz.AnimationViewer(view_img, bbox=view_box, verbose=True, note=f"{pid}_{c+1}", draw_face=False)
+
             return img, bboxes, pid
         else:
             npy_name, bboxs_ori, pid = self.data[i]
@@ -1062,7 +1074,7 @@ def _test_kfold(data_augmentation):
 
     
 
-def construct_dataset(suffix=""):
+def construct_dataset(suffix="", save=True):
     dataset = LungDataset()
     def get_date_str(date=datetime.today()):
         return "{}{:02}{:02}".format(date.year, date.month, date.day)
@@ -1070,7 +1082,8 @@ def construct_dataset(suffix=""):
     if len(suffix)!=0:
         today_str += "_" + suffix
     outname = "lung_dataset_{}.pkl".format(today_str)
-    dataset.save(outname)
+    if save:
+        dataset.save(outname)
     return dataset
     
 def preprocessed_all(overwrite_npy, force_reconstruct, model_input_shape, output_name, pad_mode="center", pad_cval=0, resize_before_pad=True, debug=False):
@@ -1092,7 +1105,7 @@ def preprocessed_all(overwrite_npy, force_reconstruct, model_input_shape, output
     
 if __name__ == "__main__":
     #_test()
-    construct_dataset(suffix="5mm_mean_exclude_both")
+    construct_dataset(suffix="", save=True)
     raise EOFError
     #dataset = LungDataset.load(CURRENT_DATASET_PKL_PATH)
     """preprocessed_all(overwrite_npy=True, 

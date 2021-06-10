@@ -47,12 +47,25 @@ if __name__ == "__main__":
 
 
     for exp_name, fold_num, eval_epochs in [
+        
+        #('train_rc_config_5.9.1_iterative_fp_update_f0', 0, 272),
+        #('train_rc_config_5.9.2_iterative_fp_update_f1', 1, 221),
+        #('train_rc_config_5.9.1_iterative_fp_update_f3', 3, 238),
+        #3,0 resume, 1 retrain
 
-        ('train_rc_config_5.6.4_resnest_shallower_f0', 0, 187),
-        ('train_rc_config_5.6.5_resnest_shallower_f1', 1, 255),
-        ('train_rc_config_5.6_resnest+sgd_shallower_f2', 2, 187),
-        ('train_rc_config_5.6_resnest+sgd_shallower_f3', 3, 204),
-        ('train_rc_config_5.6.2_resnest_shallower_f4', 4, 221)
+        #('train_rc_config_5.11_csp+group_iterative_fp_update_f0', 0, 238),
+        #('train_rc_config_5.11_csp+group_iterative_fp_update_f1', 1, 300),
+        #('train_rc_config_5.11_csp+group_iterative_fp_update_f2', 2, 300),
+        ('train_rc_config_5.11.2_csp+group_iterative_fp_update_f3', 3, 300),
+        #('train_rc_config_5.11_csp+group_iterative_fp_update_f4', 4, 255),
+
+
+        #1.25mm best
+        #('train_rc_config_5.6.4_resnest_shallower_f0', 0, 187),
+        #('train_rc_config_5.6.5_resnest_shallower_f1', 1, 255),
+        #('train_rc_config_5.6_resnest+sgd_shallower_f2', 2, 187),
+        #('train_rc_config_5.6_resnest+sgd_shallower_f3', 3, 204),
+        #('train_rc_config_5.6.2_resnest_shallower_f4', 4, 221)
 
         # 5mm model inference on 1.25
         #('train_rc_config_5.6.4_resnest_shallower_f0', 0, 187),
@@ -84,6 +97,9 @@ if __name__ == "__main__":
                 #opt.exp_name = exp_name
             if cfg.TRAIN["EXTRA_FP_USAGE"] == "eval_only":
                 opt.exp_name = opt.exp_name + "_EXTRA_FP"
+            if cfg.VAL["NODULE_RANKING_STRATEGY"] == "conf+class":
+                opt.exp_name = opt.exp_name + "_conf+class"
+
             logger = Logger(log_file_name=opt.log_path + '/log.txt', log_level=logging.DEBUG, logger_name='YOLOv4').get_log()
             checkpoint_root = 'checkpoint/' #'/home/lab402/p08922003/YOLOv4-pytorch/checkpoint/'
             checkpoint_folder = '{}{}'.format(checkpoint_root, exp_name)

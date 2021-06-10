@@ -3,6 +3,7 @@ import numpy as np
 import os
 from os.path import join as pjoin
 from tqdm import tqdm
+import pydicom
 
 from dataset import Tumor, LungDataset
 from global_variable import MASK_SAVED_PATH, CURRENT_DATASET_PKL_PATH
@@ -78,12 +79,83 @@ def find_data(pid:str):
         for bbox in bboxes:
             bbox_coor = bbox[:6]
             normal = (bbox_coor[3:] - bbox[:3])>=0
-            if (not normal.all()) or (1):
+            if ((not normal.all()) or (1) and 0):
                 print("Invalid bbox detected in pid: {}".format(pid))
                 print("bbox_coor:", bbox_coor)
                 AnimationViewer(img.squeeze(-1).numpy(), bboxes[:,:6].tolist())
 
+def show_metadata(metadatas=("SliceThickness",), return_dic=False):
+    dataset = LungDataset.load(CURRENT_DATASET_PKL_PATH)
+    if type(metadatas)==str:
+        metadatas = [metadatas]
+    assert type(metadatas) in (list, tuple)
+    out = {metadata:{} for metadata in metadatas}
+    pids = set(dataset.pids) # avoid repeated pid
+    for pid in tqdm(pids, desc="Reading metadata", total=len(pids)):
+        tumor = dataset.tumors[dataset.pid_to_excel_r_relation[pid][0]]
+        dpath = tumor.dcm_reader.path
+        for s in os.listdir(dpath):
+            if "." not in s:
+                assert s.isnumeric()
+                s0 = pydicom.read_file(pjoin(dpath, s))
+                break
+        for metadata in metadatas:
+            if hasattr(s0, metadata):
+                md = s0.__getattr__(metadata)
+                if type(md) not in (str, int, float, bool, None):
+                    md = md.__str__()      
+                if md not in out[metadata]:
+                    out[metadata][md] = [pid]
+                else:
+                    out[metadata][md].append(pid)
+            else:
+                blank = "BLANK"
+                if blank not in out[metadata]:
+                    out[metadata][blank] = [pid]
+                else:
+                    out[metadata][blank].append(pid)
+                pass
+                #print("pid={} has no attr '{}'".format(pid, metadata))
+
+    if return_dic:
+        return out
+    
+    for metadata in metadatas:
+        print("="*15)
+        print("For '{}'".format(metadata))
+        print("-"*15)
+        for md, pids in out[metadata].items():
+            count = len(pids)
+            print("{}: {}".format(md, count))
+
+
+def ct_ldct():
+    metadatas = show_metadata(["XRayTubeCurrent","ContrastBolusAgent", "ContrastBolusTotalDose"], return_dic=True)
+    currents = metadatas["XRayTubeCurrent"]
+    assert "BLANK" not in currents
+    big_x = sum([pids for cur,pids in currents.items() if float(cur)>=100], [])
+    small_x = sum([pids for cur,pids in currents.items() if float(cur)<100], [])
+    print("Using XRayCurrent: CT={}, LDCT={}".format(len(big_x), len(small_x)))
+
+    agents = metadatas["ContrastBolusAgent"]
+    doses = metadatas["ContrastBolusTotalDose"]
+    have_dose = sum([pids for dose, pids in doses.items() if dose!="BLANK" and float(dose)>0], [])
+    no_dose = sum([pids for dose, pids in doses.items() if dose=="BLANK" or float(dose)==0], [])
+    have_agent = sum([pids for agent, pids in agents.items() if agent not in ("BLANK", "None")], [])
+    if (0): #debug:
+        for pid in have_dose:
+            for agent, pids in agents.items():
+                if pid in pids:
+                    print("pid={} have dose of {}".format(pid, agent))
+        assert len(have_agent)==286, "len(have_agent)=={}".format(len(have_agent))
+    print("Using ContrastAgent: CT={}, LDCT={}".format(len(have_dose), len(no_dose)))
+
+
 if __name__ == "__main__":
     #test_lung_voi()
-    test_data()
+    #test_data()
     #find_data("21678302")
+    #show_metadata(["Manufacturer", "ManufacturerModelName", "SliceThickness"])
+    #show_metadata(["XRayTubeCurrent"])
+    #show_metadata(["ContrastBolusAgent", "ContrastBolusTotalDose"])
+    ct_ldct()

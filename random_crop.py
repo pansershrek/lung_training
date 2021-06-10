@@ -182,9 +182,16 @@ def random_crop_3D(image, boxes, min_shape=None, max_shape=None, use_all_box=Fal
                     raise 
                 
 
-            
-
-            crop = torch.tensor([int(z1), int(top), int(left), int(z2), int(bottom), int(right)], dtype=torch.float32, device=device) # z1,y1,x1,z2,y2,x2
+            if int(z2)-int(z1)!=new_d:
+                diff = new_d - (int(z2)-int(z1)) # 128-129 = -1
+                z2 += diff # z2 = z2-1 = 129-1 = 128
+            if int(bottom)-int(top)!=new_h:
+                bottom += new_h - (int(bottom)-int(top))
+            if int(right)-int(left)!=new_w:
+                right += new_w - (int(right)-int(left))
+                
+            crop_coor = [int(z1), int(top), int(left), int(z2), int(bottom), int(right)]        
+            crop = torch.tensor(crop_coor, dtype=torch.float32, device=device) # z1,y1,x1,z2,y2,x2
             #print("Cropping :", [int(z1), int(top), int(left), int(z2), int(bottom), int(right)])
             # Calculate IoU  between the crop and the bounding boxes
             overlap = find_IoU(crop.unsqueeze(0), box.unsqueeze(0) , dim=3) #(1, #objects)  # np.expand_dims ~= torch.unsqueeze
@@ -196,8 +203,8 @@ def random_crop_3D(image, boxes, min_shape=None, max_shape=None, use_all_box=Fal
             #PAD if needed
             if NEED_PAD:
                 warnings.warn("padding image due to 'ori_shape < crop_shape' (NEED_PAD)")
-                c, d, w, h = new_image.shape
-                assert (d, w, h) != (new_d, new_h, new_w)
+                c, d, h, w = new_image.shape
+                assert (d, h, w) != (new_d, new_h, new_w)
                 pad_img = torch.zeros((c,new_d,new_h,new_w), dtype=torch.float32)  
                 pad_img[:,:d,:h,:w] = new_image
                 new_image = pad_img
@@ -434,7 +441,7 @@ def random_crop_preprocessing(img, bboxes, transform, target_transform, target_i
     return out
 
                 
-def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape=(128,128,128), n_copy=10, save=False, device="cuda", stack_before_process=False, load_fast_5mm=False, load_fast_2d5mm=False, use_all_box=False, use_extra_fp=False):
+def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape=(128,128,128), n_copy=10, save=False, device="cuda", stack_before_process=False, load_fast_5mm=False, load_fast_2d5mm=False, use_all_box=False, use_extra_fp=False, use_copy_paste=False):
     """ target_input_shape must be multiples of 32, otherwise it will be very complicated!!! """
     global Tumor, LungDataset
     from dataset import Tumor, LungDataset
@@ -475,7 +482,7 @@ def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape
         #dataset.get_data(["21678302", "6993538"])
 
         # processing
-        dataset.data = dataset.data[:] #[64:]
+        dataset.data = dataset.data[410:] #[64:]
         #dataset.data = dataset.data[328:]
         
     df = pd.read_excel(EXTRA_FP_EXCEL_PATH, sheet_name="Sheet1", converters={'pid':str,'bbox':str, 'isFP':int})
@@ -494,7 +501,7 @@ def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape
         if use_extra_fp: # use_extra_fp_instead
             #print("pid:",pid)
             also_crop_boxes = bboxes
-            also_crop_boxes[:,6] = 2
+            #also_crop_boxes[:,6] = 2
             also_crop_boxes = also_crop_boxes.tolist()
             bboxes = [eval(box) for box in df[df["pid"]==pid]["bbox"]]
             cls_labels = [int(isfp==0) for isfp in df[df["pid"]==pid]["isFP"]] # isfp==0 -> 1 else -> 0
@@ -502,6 +509,11 @@ def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape
             if (0): #debug
                 AnimationViewer(img.squeeze(-1).cpu().numpy(), also_crop_boxes[:,:6].tolist(), note="watch GT")
                 continue
+        elif use_copy_paste:
+            ...
+
+
+
             
 
         img = img.squeeze(-1)
@@ -579,6 +591,7 @@ if __name__ == "__main__":
     #_test_random_crop()
     #_test_pixelspacing()
     device = "cuda"
+    raise EOFError
     #_dataset_preprocessing(save=False, n_copy=2, target_transform=(1.25, 0.75, 0.75),
     #                        target_input_shape=(128, 128, 128), device=device, stack_before_process=False,
     #                        load_fast_5mm=False, load_fast_2d5mm=True)

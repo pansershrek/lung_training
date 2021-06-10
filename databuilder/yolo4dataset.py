@@ -42,7 +42,7 @@ class YOLO4_3DDataset(Dataset):
         self.num_classes = len(classes)
         self.class_to_id = dict(zip(self.classes, range(self.num_classes)))
         self.cacher = LRUCache(cache_size=cache_size)
-        self.batch_1_eval = batch_1_eval
+        self.batch_1_eval = batch_1_eval # override img_size if True
         self.use_zero_conf = use_zero_conf
         if batch_1_eval:
             warnings.warn("batch_1_eval is on!")
@@ -76,6 +76,7 @@ class YOLO4_3DDataset(Dataset):
             #img_org = img_org.transpose(2, 0, 1)
             img = img_org
             bboxes = bboxes_org
+            #print(img_name, img_org.shape)
 
 
         del img_org, bboxes_org
@@ -176,7 +177,7 @@ class YOLO4_3DDataset(Dataset):
         if self.batch_1_eval:
             output =  img, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name, shape_before_pad, valid_bboxes
         else:
-            output =  img, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name, shape_before_pad, []
+            output =  img, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_name, shape_before_pad, [] #valid_bboxes
         #print("At yolo4dataset.py")
         #print("label_sbbox", label_sbbox.shape)
         #print("label_mbbox", label_mbbox.shape)

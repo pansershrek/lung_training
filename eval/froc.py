@@ -4,11 +4,18 @@ import matplotlib.pyplot as plt
 from os.path import join as pjoin
 import pickle
 import pandas as pd
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+import sys
 
+sys.path.append("D:/CH/LungDetection/training")
+
+from dataset import Tumor, LungDataset
+from databuilder.yolo4dataset import YOLO4_3DDataset
 from utils_ABUS.postprocess import centroid_distance, eval_precision_recall_by_dist, eval_precision_recall
 from utils_ABUS.misc import draw_full, build_threshold, AUC
 import config.yolov4_config as cfg
-from global_variable import NPY_SAVED_PATH, EXTRA_FP_EXCEL_PATH
+from global_variable import CURRENT_DATASET_PKL_PATH, GT_LUT_PKL_PATH, NPY_SAVED_PATH, EXTRA_FP_EXCEL_PATH, GT_LUT_PKL_PATH
 
 def iou_3D(boxes, target_box): #zyxzyx format, by ccy
     """
@@ -117,10 +124,17 @@ def froc_take_max(froc_x, froc_y):
     froc_y = np.array(froc_y_tmp)
     return froc_x, froc_y
 
-def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, eval_input_size=cfg.VAL["TEST_IMG_SIZE"], dynamic_input_shape=cfg.VAL["BATCH_1_EVAL"], det_tp_iou_thresh=cfg.VAL["TP_IOU_THRESH"], return_fp_bboxes=False):
+def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, eval_input_size=cfg.VAL["TEST_IMG_SIZE"], 
+                    dynamic_input_shape=cfg.VAL["BATCH_1_EVAL"], det_tp_iou_thresh=cfg.VAL["TP_IOU_THRESH"], 
+                    return_fp_bboxes=False, return_froc_only=False, npy_format_already=False):
     #size_threshold is 20 in thesis
-    num_npy = os.listdir(npy_dir) # dir is your directory path
+    if type(npy_dir)==str:
+        num_npy = os.listdir(npy_dir) # dir is your directory path
+    elif hasattr(npy_dir, "__iter__"): # npy_dirs
+        num_npy = sum([os.listdir(d) for d in npy_dir], [])
     total_pass = len(num_npy)
+    #print("total_pass:", total_pass, npy_dir)
+    #1/0
     all_thre=build_threshold(th_step)
     PERF_per_thre=[]
     PERF_per_thre_s=[]
@@ -162,7 +176,16 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
                 scale = (size[0]/int(line[1]),size[1]/int(line[2]),size[2]/int(line[3]))
             else:
                 scale = (1., 1., 1.)
-            pred_npy = npy_format.format(pid)
+            if not npy_format_already:
+                pred_npy = npy_format.format(pid)
+            else: # total_FROC
+                for form in npy_format:
+                    pred_npy = form.format(pid)
+                    if os.path.exists(pred_npy):
+                        break
+                else:
+                    assert False, "Not existed: {}".format(pred_npy)
+ 
             if not os.path.exists(pred_npy):
                 continue
             else:
@@ -398,8 +421,6 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
         draw_full(froc_x, froc_y, '#FF0000', 'IOU', '-', 1, True)
         area_iou = AUC(froc_x, froc_y, normalize=True)
 
-
-
     # if len(data_s) == 0:
     #     print('Inference result for small is empty.')
     # else:
@@ -409,6 +430,9 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
     # axes = plt.gca()
     # axes.axis([0, 10, 0.5, 1])
     # axes.set_aspect('auto')
+    if return_froc_only:
+        return froc_x_dist, froc_y_dist, area_dist
+
     plt.xlim(1, 8)
     x_tick = np.arange(0, 10, 2)
     plt.xticks(x_tick)
@@ -428,7 +452,8 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
     else:
         return area_dist, area_iou, plt, log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou
 
-def calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, ori_dataset, size_threshold=0, th_step=0.05, det_tp_iou_thresh=cfg.VAL["TP_IOU_THRESH"]):
+def calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, ori_dataset, size_threshold=0, th_step=0.05, 
+                                det_tp_iou_thresh=cfg.VAL["TP_IOU_THRESH"]):
     #size_threshold is 20 in thesis
     num_npy = os.listdir(npy_dir) # dir is your directory path
     total_pass = len(num_npy)
@@ -625,6 +650,93 @@ def calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, ori_dataset,
     plt.xlabel('False Positive Per Pass')
     return area_dist, area_iou, plt, log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou
 
+def plot_total_FROC(froc_data, save=False, save_path="total_froc.png", gt_lut_pkl_path=GT_LUT_PKL_PATH):
+    #size_threshold is 20 in thesis
+    #assert len(npy_dirs) == len(exp_names), "Should of same length"
+
+    with open(gt_lut_pkl_path, "rb") as f:
+        gt_lut = pickle.load(f)
+    
+    #dataset = LungDataset.load(CURRENT_DATASET_PKL_PATH)
+    #dataset.get_data(dataset.pids)
+    #pid_folds = {}
+    ##all_pids = set()
+    #for fold in range(5):
+    #    _, _, test_data = dataset.make_kfolds_using_pids(num_k_folds=5, k_folds_seed=123, current_fold=fold, valid_test_split=True, portion_list=[3,1,1])
+    #    pid_folds[fold] = test_data
+        
+
+    size_threshold=0
+    th_step=0.05
+    eval_input_size=cfg.VAL["TEST_IMG_SIZE"]
+    dynamic_input_shape=cfg.VAL["BATCH_1_EVAL"]
+    det_tp_iou_thresh=cfg.VAL["TP_IOU_THRESH"]
+    data = {}
+    for exp_name, npy_dirs_kfold in froc_data.items():
+        npy_dirs = []
+        npy_formats = []
+        for npy_dir, epoch in npy_dirs_kfold:
+            npy_dir = "D:/CH/LungDetection/training/preidction/" + npy_dir + f"/{epoch}_conf0.015/evaluate"
+            npy_format = npy_dir + "/{}_test.npy"
+            npy_dirs.append(npy_dir)
+            npy_formats.append(npy_format)
+        froc_x, froc_y, area = calculate_FROC(gt_lut, npy_dirs, npy_formats, size_threshold, th_step, eval_input_size, 
+                                                dynamic_input_shape, det_tp_iou_thresh, return_fp_bboxes=False, 
+                                                return_froc_only=True, npy_format_already=True)
+        data[exp_name] = (froc_x, froc_y, area)
+    plt.close()
+
+    plt.figure()
+    plt.rc('font',family='Times New Roman', weight='bold')
+    for exp_name, (froc_x, froc_y, area) in data.items():
+        plt.plot(froc_x, froc_y, label=exp_name+', AUC = %.3f'%area, linestyle="-")
+    x_tick = np.arange(0, 10, 1)
+    plt.xticks(x_tick)
+    #plt.ylim(0.5, 1)
+    plt.ylim(0,1)
+    if (0):
+        y_tick = np.arange(0.5, 1, 0.05)
+        y_tick = np.append(y_tick, 0.98)
+        y_tick = np.sort(y_tick)
+        plt.yticks(y_tick)
+    plt.legend(loc='lower right')
+    # plt.grid(b=True, which='major', axis='x')
+    plt.ylabel('Sensitivity')
+    plt.xlabel('Average Number of False Positive Per Scan')
+    plt.title("FROC Performance")
+    if save:
+        plt.savefig(save_path)
+    plt.show()
+    
+
+
+
+def get_gt_lut(dataset_path=CURRENT_DATASET_PKL_PATH, save=False, save_path=GT_LUT_PKL_PATH):
+    dataset = LungDataset.load(dataset_path)
+    pids = dataset.pids
+    #pids = pids[:3]
+    dataset.get_data(pids)
+    dataset.set_batch_1_eval(True, (1.25,0.75,0.75))
+    dataset.set_lung_voi(True)
+    dataset = YOLO4_3DDataset(dataset, classes=[0, 1], img_size=cfg.VAL["TEST_IMG_SIZE"], cache_size=0, batch_1_eval=cfg.VAL["BATCH_1_EVAL"])
+    dataloader = DataLoader(dataset,
+                            batch_size=1,
+                            num_workers=cfg.VAL["NUMBER_WORKERS"],
+                            shuffle=False, pin_memory=False
+                            )
+    gt_lut = {}
+    for i, (_, _, _, _, _, _, _, img_names, _, valid_bboxes)  in tqdm(enumerate(dataloader), total=len(dataloader)):
+        #print("eval imgs input shape:", imgs.shape)
+        for img_name, valid_bbox in zip(img_names, valid_bboxes):
+            valid_bbox = valid_bbox.cpu().tolist()
+            gt_lut[img_name] = valid_bbox
+    print("gt_lut:", gt_lut)
+    if save:
+        with open(save_path, "wb") as f:
+            pickle.dump(gt_lut, f)
+    return gt_lut
+
+
 def _parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -640,13 +752,33 @@ def _parse_args():
 
 if __name__ == '__main__':
     root = 'datasets/abus'
+    #get_gt_lut(save=False)
+    froc_data = {
+        "ResNeSt+FPR+iter":[
+            ("train_rc_config_5.9.1_iterative_fp_update_f0_EXTRA_FP_testing", 272),
+            ("train_rc_config_5.9.2_iterative_fp_update_f1_EXTRA_FP_testing", 221),
+            ("train_rc_config_5.9.1_iterative_fp_update_f2_EXTRA_FP_testing", 289),
+            ("train_rc_config_5.9.1_iterative_fp_update_f3_EXTRA_FP_testing", 238),
+            ("train_rc_config_5.9.1_iterative_fp_update_f4_EXTRA_FP_testing", 255),
+        ],
+
+        "ResNeSt":[
+            ("resnest_no_fp_reduction_dry_run_f0_EXTRA_FP_testing", 170),
+            ("resnest_no_fp_reduction_dry_run_f1_EXTRA_FP_testing", 204),
+            ("resnest_no_fp_reduction_dry_run_f2_EXTRA_FP_testing", 187),
+            ("resnest_no_fp_reduction_dry_run_f3_EXTRA_FP_testing", 255),
+            ("resnest_no_fp_reduction_dry_run_f4_EXTRA_FP_testing", 255),       
+        ],
+        
+    }
+    plot_total_FROC(froc_data, save=True, save_path="D:/CH/total_froc.png", gt_lut_pkl_path=GT_LUT_PKL_PATH)
 
     #npy_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'results/prediction/')
     #npy_format = npy_dir + '{}'
 
-    npy_dir = '/data/Hiola/YOLOv4-pytorch/data/pred_result/evaluate/'
-    npy_format = npy_dir + '{}_0.npy'
-    args = _parse_args()
-    root = args.root
-    main(args)
-    area_small, area_big, plt = calculate_FROC(root, npy_dir, npy_format)
+    #npy_dir = '/data/Hiola/YOLOv4-pytorch/data/pred_result/evaluate/'
+    #npy_format = npy_dir + '{}_0.npy'
+    #args = _parse_args()
+    #root = args.root
+    #main(args)
+    #area_small, area_big, plt = calculate_FROC(root, npy_dir, npy_format)

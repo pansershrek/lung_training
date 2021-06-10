@@ -51,6 +51,9 @@ class Bottleneck(nn.Module):
                  norm_layer=None, dropblock_prob=0.0, last_gamma=False,
                  use_SAConv=False,
                  extra_attention=None):
+        self.inplanes = inplanes
+        self.planes = planes
+        self.cardinality = cardinality
         super(Bottleneck, self).__init__()
         group_width = int(planes * (bottleneck_width / 64.)) * cardinality
         default_conv = SAConv3d if use_SAConv else nn.Conv3d # use SAConv3d only for kernel_size = 3
@@ -119,7 +122,7 @@ class Bottleneck(nn.Module):
 
     def forward(self, x):
         residual = x
-
+        #print("bottleneck x.shape", x.shape)
         out = self.conv1(x)
         out = self.bn1(out)
         if self.dropblock_prob > 0.0:
@@ -194,6 +197,7 @@ class ResNet(nn.Module):
                  stride_per_layer=(2, 2, 2), # original
                  use_SAConv=False, #ccy
                  extra_attention=None, #ccy
+                 use_csp_bottleneck=False, #ccy
                  ):
         self.cardinality = groups
         self.bottleneck_width = bottleneck_width
@@ -213,6 +217,7 @@ class ResNet(nn.Module):
         self.feature_channels = feature_channels
         self.use_SAConv = use_SAConv
         self.extra_attention = extra_attention
+        self.use_csp = use_csp_bottleneck
 
         super(ResNet, self).__init__()
         self.rectified_conv = rectified_conv
@@ -245,6 +250,12 @@ class ResNet(nn.Module):
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool3d(kernel_size=3, stride=2, padding=1)
+
+        if self.use_csp:
+            stem_width = int(stem_width/2)
+            feature_channels = [int(i/2) for i in feature_channels]
+            #self.inplanes = int(self.inplanes/2) # don't do this if stem_layer is shared
+
         self.layer1 = self._make_layer(block, stem_width, layers[0], norm_layer=norm_layer, is_first=False, extra_attention=self.extra_attention)
         self.layer2 = self._make_layer(block, feature_channels[0], layers[1], stride=stride_per_layer[0], norm_layer=norm_layer, extra_attention=self.extra_attention)
         if dilated or dilation == 4:
@@ -273,6 +284,20 @@ class ResNet(nn.Module):
             self.avgpool = GlobalAvgPool3d()
             self.drop = nn.Dropout(final_drop) if final_drop > 0.0 else None
             self.fc = nn.Linear(feature_channels[2] * block.expansion, num_classes)
+        
+        if self.use_csp:
+            ...
+            #stem_width *= 2
+            #feature_channels = [i*2 for i in feature_channels]
+            # *2 for split recover (no need, processed in csp)
+            # another *2 on layer1 inplanes for deep_stem
+            double = True # whether to make c2=2*c2 per layer
+            if deep_stem:
+                stem_out = stem_width*2
+            self.layer1 = BottleneckCSPWrapper(stem_out*2, stem_width, self.layer1, expansion=block.expansion, stride=1, isfirst=True, double=double)
+            self.layer2 = BottleneckCSPWrapper(stem_width, feature_channels[0], self.layer2, expansion=block.expansion, stride=stride_per_layer[0], double=double)
+            self.layer3 = BottleneckCSPWrapper(feature_channels[0], feature_channels[1], self.layer3, expansion=block.expansion, stride=stride_per_layer[1], double=double)
+            self.layer4 = BottleneckCSPWrapper(feature_channels[1], feature_channels[2], self.layer4, expansion=block.expansion, stride=stride_per_layer[2], double=double)
 
         self._initialize_weights()
         #for name, m in self.named_modules():
@@ -282,6 +307,8 @@ class ResNet(nn.Module):
         #    elif isinstance(m, norm_layer):
         #        m.weight.data.fill_(1)
         #        m.bias.data.zero_()
+        print("channels_per_layer", [stem_width]+list(feature_channels))
+        print("self.inplanes", self.inplanes)
         
     def _initialize_weights(self):
         print("**" * 10, "Initing ResNeSt weights", "**" * 10)
@@ -384,6 +411,7 @@ class ResNet(nn.Module):
         x = self.maxpool(x)
         #print("After maxpool:", x.shape)
 
+  
         x = self.layer1(x)
         #print("layer1", x.shape)
         x3 = self.layer2(x)
@@ -392,6 +420,7 @@ class ResNet(nn.Module):
         #print("layer3", x2.shape)
         x1 = self.layer4(x2)
         #print("layer4", x1.shape)
+ 
 
         if self.used_for_yolo:
             return [x3, x2, x1]
@@ -403,3 +432,68 @@ class ResNet(nn.Module):
                 x = self.drop(x)
             x = self.fc(x)
             return x
+
+
+class Conv(nn.Conv3d):
+    def __init__(self, *args, norm_layer=nn.BatchNorm3d, act=nn.ReLU, **kwargs):
+        super(Conv, self).__init__(*args, **kwargs)
+        self.norm = norm_layer(args[1]) if type(norm_layer)!=type(None) else None
+        self.act = act()
+    def forward(self, x):
+        x = super().forward(x)
+        x = self.act(self.norm(x))
+        return x
+
+
+class BottleneckCSPWrapper(nn.Module):
+    # CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks (Their Proposed)
+    def __init__(self, inplane, plane, layer, expansion, stride=1, isfirst=False, double=False):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super(BottleneckCSPWrapper, self).__init__()
+        self.m = layer # in: inplane, out: plane*expansion
+        c_in = inplane
+        c1_out = inplane
+        c_ = plane * expansion  # bottleneck out_channels = plane(feature channels) * expansion
+        c_out = plane * expansion
+
+        #if not isfirst and double:
+        #    c1 *= expansion
+        #    c2 *= 2
+        if (not isfirst):
+            c_in *= expansion
+            c1_out *= expansion
+            if double:
+                c_in *= 2
+                c_out *= 2
+        elif double:
+            c_out *= 2
+            
+
+        self.c_in = c_in # bottleneck in_channel
+        self.c1_out = c1_out
+        self.c_ = c_
+        self.c_out = c_out
+
+        self.c_layer = plane * expansion # bottleneck out_channel
+        self.cv1 = Conv(c_in, c1_out, 1, 1 )  # (transition 1) (base_layer)
+        self.cv2 = nn.Conv3d(c_in, c_, 1, stride, bias=False)
+        self.cv3 = nn.Conv3d(c_, c_, 1, 1, bias=False) # (transition 2)
+        self.cv4 = Conv(2 * c_, c_out, 1, 1) # (transition 3)
+        self.bn = nn.BatchNorm3d(2 * c_)  # applied to cat(cv2, cv3)
+        self.act = nn.LeakyReLU(0.1)
+        
+
+    def forward(self, x):
+        #print("Entering CSP with c_in={}, c1_out={}, c_={}, c_out={}, self.m.inplanes={}".format(self.c_in, self.c1_out, self.c_, self.c_out, self.m[0].inplanes))
+        #print("csp inp.shape", x.shape, "[CSP config: {}->{}]".format(self.c_in, self.c_layer))
+        tmp = self.cv1(x)
+        #print("csp conv1", tmp.shape)
+        tmp = self.m(tmp)
+        #print("csp m",tmp.shape)
+        y1 = self.cv3(tmp)
+        #print("csp conv3",tmp.shape)
+        #y1 = self.cv3(self.m(self.cv1(x)))
+        y2 = self.cv2(x)
+        out = self.act(self.bn(torch.cat((y1, y2), dim=1)))
+        out = self.cv4(out)
+        #print("csp out", out.shape)
+        return out
