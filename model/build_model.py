@@ -1,12 +1,16 @@
 import sys
 sys.path.append("..")
+sys.path.append("D:/CH/LungDetection/training")
 
 import torch.nn as nn
 import torch
+import numpy as np
+
 from model.head.yolo_head import Yolo_head
 from model.YOLOv4 import YOLOv4
 import config.yolov4_config as cfg
-import numpy as np
+
+
 
 class Build_Model(nn.Module):
     """
@@ -87,6 +91,7 @@ class Build_Model(nn.Module):
 
 
 if __name__ == '__main__':
+    """
     from utils.flops_counter import get_model_complexity_info
     net = Build_Model()
     print(net)
@@ -99,3 +104,30 @@ if __name__ == '__main__':
     for i in range(3):
         print(p[i].shape)
         print(p_d[i].shape)
+    """
+    from memory_limiting import main as memory_limiting
+    from torchsummary import summary
+    import time
+    model = Build_Model(dims=3)
+    device = "cuda"
+    #device = "cpu"
+    if device == "cpu": # NEVER REMOVE THIS LINE, OR THE PC MAY STUCK
+        memory_limiting(10*1000)  # 15*1000 means 15GB
+    
+
+    model =  model.to(device)
+    model.train()
+    #model.eval()
+    def count_parameters(model):
+        return sum(p.numel() for p in model.parameters() if p.requires_grad)
+    #t_shape = [[1, 128,128,128]] # not including batch_size
+    #summary(model, t_shape, device=device)
+    print("# of params:", count_parameters(model))
+    #raise EOFError("End of file")
+    #t = torch.randn((1,1,256,512,512), device=device)
+    #t = torch.randn((1,1,32,128,128), device=device)
+    #out = model(t)
+    #print("Output:", *[f.shape for f in out])
+    #print("Feature channels:", model.feature_channels[-3:])
+    #print("Feature channels:", feature_channels)
+    #time.sleep(5)

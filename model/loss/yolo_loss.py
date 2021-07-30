@@ -86,11 +86,12 @@ class BinaryFocalLossWithSigmoid(nn.Module):
         return loss
 
 class YoloV4Loss(nn.Module):
-    def __init__(self, anchors, strides, iou_threshold_loss=0.5, dims=2):
+    def __init__(self, anchors, strides, iou_threshold_loss=0.5, dims=2, hard_negative_mining=False):
         super(YoloV4Loss, self).__init__()
         self.__iou_threshold_loss = iou_threshold_loss
         self.__strides = strides
         self.__dims=dims
+        self.hard_negative_mining = hard_negative_mining
 
     def forward(self, p, p_d, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes):
         """
@@ -263,9 +264,19 @@ class YoloV4Loss(nn.Module):
         loss_cls = label_obj_mask * BCE(input=p_cls, target=label_cls) * label_mix
 
 
+        if (self.hard_negative_mining) and (batch_size>=3): #hard example mining on p_conf
+            topk = min(batch_size, 3) # top3
+            ndim = loss_conf.ndim
+            # sum loss over anchors, scales, but not samples
+            loss_conf = torch.sum(loss_conf, dim=list(range(ndim))[1:]) # (B,A,A,A,S,1) -> (B)
+            loss_conf, _ = torch.sort(loss_conf, dim=0, descending=True) # sort from max to min, (B)
+            loss_conf = loss_conf[:topk] # (B,) -> (topk,)
+            loss_conf = torch.sum(loss_conf) / loss_conf.shape[0] # (topk,) -> float
+
+        else:
+            loss_conf = (torch.sum(loss_conf)) / batch_size
 
         loss_ciou = (torch.sum(loss_ciou)) / batch_size
-        loss_conf = (torch.sum(loss_conf)) / batch_size
         loss_cls = (torch.sum(loss_cls)) / batch_size
         loss = loss_ciou + loss_conf + loss_cls
         #bboxes[0, 0]

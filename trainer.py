@@ -1,8 +1,10 @@
 import logging
+
+from torch.utils.data.dataset import ChainDataset
 import utils.gpu as gpu
 import torch
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 import time
 import random
 import argparse
@@ -13,6 +15,8 @@ import pickle
 from os.path import join as pjoin
 from tqdm import tqdm
 from apex import amp
+from copy import deepcopy
+
 
 import utils.datasets as data
 from model.build_model import Build_Model
@@ -36,7 +40,8 @@ from global_variable import CURRENT_DATASET_PKL_PATH, USE_LUNA, MASK_SAVED_PATH,
 
 class Trainer(object):
     def __init__(self, testing_mode, weight_path, checkpoint_save_dir, resume, gpu_id, accumulate, fp_16, writer, logger, crx_fold_num,
-                dataset_name, eval_interval, npy_name, det_tp_iou_thresh=None, eval_conf_thresh=None):
+                dataset_name, eval_interval, npy_name, det_tp_iou_thresh=None, eval_conf_thresh=None, first_time_update_fp=True,
+                eval_store_raw_bbox=False):
         #self.data_root = 'datasets/abus'
         #init_seeds(0)
         self.lung_dataset_name = dataset_name
@@ -68,16 +73,28 @@ class Trainer(object):
         self.det_tp_iou_thresh = cfg.VAL["TP_IOU_THRESH"] if det_tp_iou_thresh==None else det_tp_iou_thresh
         self.eval_conf_thresh = cfg.VAL["CONF_THRESH"] if eval_conf_thresh==None else eval_conf_thresh
 
+        self.eval_store_raw_bbox = eval_store_raw_bbox
+
         self.use_5mm = cfg.TRAIN["USE_5MM"]
         self.use_2d5mm = cfg.TRAIN["USE_2.5MM"]
         assert not (self.use_5mm and self.use_2d5mm), "Either 5/2.5mm is ok, but not both at the same time"
 
+        self.use_extra_annotation = cfg.TRAIN["USE_EXTRA_ANNOTATION"]
+        self.use_extra_annotation_start_epoch = cfg.TRAIN["USE_EXTRA_ANNOTATION_START_EPOCH"]
+        self.use_copy_paste = cfg.TRAIN["USE_COPY_PASTE"]
+
+        self.hard_negative_mining = cfg.TRAIN["DO_HARD_NEGATIVE_MINING"]
+        self.hard_negative_mining_start_epoch = cfg.TRAIN["HARD_NEGATIVE_MINING_START_EPOCH"]
+        self.had_start_ohem = False
+
         self.do_fp_reduction = cfg.TRAIN["DO_FP_REDUCTION"]
         #self.fp_reduction_target = cfg.TRAIN["FP_REDUCTION_TARGET_DATASET"] 
-        self.fp_reduction_start_epoch = cfg.TRAIN["FP_REDUCTION_START_EPOCH"]
+        #self.fp_reduction_start_epoch = cfg.TRAIN["FP_REDUCTION_START_EPOCH"]
         self.fp_reduction_interval = cfg.TRAIN["FP_REDUCTION_INTERVAL"]
         self.do_update_fp_crops = cfg.TRAIN["ITERATIVE_FP_UPDATE"]
-        self.update_fp_crops_start_epoch = cfg.TRAIN["ITERATIVE_FP_UPDATE_START_EPOCH"]
+        self.fp_reduction_start_epoch = self.update_fp_crops_start_epoch = cfg.TRAIN["ITERATIVE_FP_UPDATE_START_EPOCH"]
+        assert self.fp_reduction_start_epoch >= self.update_fp_crops_start_epoch
+
         if self.do_fp_reduction:
             #assert not self.eval_random_crop, "FP_REDUCTION CAN ONLY BE DONE WHEN USING THE WHOLE IMAGE AS EVAL DATA!"
             #assert self.testing_mode != 1 ## only debug/train/validation allowed
@@ -85,7 +102,9 @@ class Trainer(object):
             self.empty_dataset = LungDataset.load(dataset_name) # empty means "didn't get_data"
             assert self.fp_reduction_interval > 0
             assert self.update_fp_crops_start_epoch >= self.fp_reduction_start_epoch
-        self.merging_train_and_ori_fp_set = True
+            if self.use_extra_annotation:
+                assert self.fp_reduction_start_epoch >= self.use_extra_annotation_start_epoch
+        #self.merging_train_and_ori_fp_set = True
         
 
         
@@ -171,9 +190,13 @@ class Trainer(object):
                 pkl_name = False
             train_dataset.set_2d5mm(True)
             test_dataset.set_2d5mm(True, pkl_name)
-            
-        
+                    
+
         if self.do_fp_reduction: # (pre-cropped version)
+            self.first_time_update_fp = first_time_update_fp
+            #print("first time update fp: {}".format(self.first_time_update_fp))
+            self.assign_train_fp_dataset()
+            """
             assert self.train_random_crop
             train_fp_dataset = LungDataset.load(dataset_name)
             train_fp_dataset.data = train_data
@@ -191,6 +214,7 @@ class Trainer(object):
             if (0): #debug
                 for img, bbox, pid in train_fp_dataset:
                     pass
+            """
                     #print("fp pid", pid)
                     #view_img = img.squeeze(-1).numpy()
                     #print("fp bbox:", bbox)
@@ -199,6 +223,39 @@ class Trainer(object):
 
         self.train_dataset = YOLO4_3DDataset(train_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False)
         #self.train_dataset = data.Build_Dataset(anno_file_type="train", img_size=cfg.TRAIN["TRAIN_IMG_SIZE"])
+        if self.use_extra_annotation:
+            assert self.train_random_crop
+            train_extra_dataset = LungDataset.load(dataset_name)
+            train_extra_dataset.data = train_data
+            folder_path = NPY_SAVED_PATH
+            train_extra_dataset.set_random_crop(cfg.TRAIN["EXTRA_ANNOTATION_CROP_PREFIX"], cfg.TRAIN["EXTRA_ANNOTATION_NCOPY"], True, folder_path)
+            self.train_extra_dataset = YOLO4_3DDataset(train_extra_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False, use_zero_conf=cfg.TRAIN["FP_REDUCTION_USE_ZERO_CONF"])
+            assert self.train_dataset.img_size == self.train_extra_dataset.img_size
+            #self.train_dataset = ConcatDataset([self.train_dataset, self.train_extra_dataset])
+            #self.train_dataset.img_size = self.train_extra_dataset.img_size
+        if self.use_copy_paste:
+            assert self.train_random_crop
+            assert self.use_extra_annotation
+            cp_dataset = LungDataset.load(dataset_name)
+            cp_dataset.data = []
+            with open(cfg.TRAIN["COPY_PASTE_EXCLUDE_PIDS_TXT"] , "r") as f:
+                exclude_pids = f.read().split()
+            while "" in exclude_pids:
+                exclude_pids.remove("")
+            exclude_pids = set(exclude_pids)
+
+            for datum in train_data:
+                _, _, pid = datum
+                if pid not in exclude_pids:
+                    cp_dataset.data.append(datum)
+
+            folder_path = NPY_SAVED_PATH
+            cp_dataset.set_random_crop(cfg.TRAIN["COPY_PASTE_CROP_PREFIX"], cfg.TRAIN["COPY_PASTE_NCOPY"], True, folder_path)
+            self.cp_dataset = YOLO4_3DDataset(cp_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False, use_zero_conf=cfg.TRAIN["FP_REDUCTION_USE_ZERO_CONF"])
+            assert self.train_dataset.img_size == self.cp_dataset.img_size
+            self.train_extra_dataset = ConcatDataset([self.train_extra_dataset, self.cp_dataset])
+            #self.train_dataset = ConcatDataset([self.train_dataset, self.cp_dataset])
+            self.train_extra_dataset.img_size = self.cp_dataset.img_size
 
         self.epochs = cfg.TRAIN["YOLO_EPOCHS"] if cfg.MODEL_TYPE["TYPE"] == 'YOLOv4' else cfg.TRAIN["Mobilenet_YOLO_EPOCHS"]
         self.early_stopping_epoch = cfg.TRAIN["EARLY_STOPPING_EPOCH"]
@@ -272,7 +329,7 @@ class Trainer(object):
                     self.best_cpm = chkpt['best_mAP']
         del chkpt
 
-    def __save_model_weights(self, epoch, cpm):
+    def __save_model_weights(self, epoch, cpm, tmp_save=False):
         if cpm > self.best_cpm:
             self.best_cpm = cpm
 
@@ -280,8 +337,10 @@ class Trainer(object):
                  'best_cpm': self.best_cpm,
                  'model': self.model.state_dict(),
                  'optimizer': self.optimizer.state_dict()}
-
-        torch.save(chkpt, os.path.join(self.checkpoint_save_dir, 'backup_epoch%g.pt'%epoch))
+        if tmp_save:
+            torch.save(chkpt, os.path.join(self.checkpoint_save_dir, 'backup_epoch%g_tmp_save.pt'%epoch))
+        else:
+            torch.save(chkpt, os.path.join(self.checkpoint_save_dir, 'backup_epoch%g.pt'%epoch))
         torch.save(chkpt, os.path.join(self.checkpoint_save_dir, 'lastest_epoch.pt'))
         if epoch==0 or (self.best_cpm == cpm and cpm>0):
             torch.save(chkpt, os.path.join(self.checkpoint_save_dir, "best.pt"))
@@ -294,7 +353,10 @@ class Trainer(object):
         writer = self.writer
         logger = self.logger
         logger.info("Training start,img size is: {},batchsize is: {:d},work number is {:d}".format(cfg.TRAIN["TRAIN_IMG_SIZE"],cfg.TRAIN["BATCH_SIZE"],cfg.TRAIN["NUMBER_WORKERS"]))
-        logger.info("Train datasets number is : {}".format(len(self.train_dataset)))
+        try:
+            logger.info("Train datasets number is : {}".format(len(self.train_dataset)))
+        except:
+            pass
 
         if self.fp_16: self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level='O1', verbosity=0)
         logger.info("        =======  start  training   ======     ")
@@ -308,13 +370,47 @@ class Trainer(object):
 
             mloss = torch.zeros(5)
             logger.info("===Epoch:[{}/{}]===".format(epoch, self.epochs))
-            n_batch = len(self.train_dataloader)
 
+            #ohem
+            if (not self.had_start_ohem) and self.hard_negative_mining and (epoch>=self.hard_negative_mining_start_epoch):
+                self.criterion = YoloV4Loss(anchors=cfg.MODEL["ANCHORS3D"], strides=cfg.MODEL["STRIDES"],
+                                    iou_threshold_loss=cfg.TRAIN["IOU_THRESHOLD_LOSS"], dims=3, hard_negative_mining=True)
+                self.had_start_ohem = True
+                
+
+            train_dataset = self.train_dataset
+
+            if self.use_extra_annotation and epoch>=self.use_extra_annotation_start_epoch:
+                assert train_dataset.img_size == self.train_extra_dataset.img_size
+                train_dataset = ConcatDataset([train_dataset, self.train_extra_dataset])
+                train_dataset.img_size = self.train_extra_dataset.img_size
+
+            do_fp_reduction_this_epoch = False # default setting
             if self.do_fp_reduction:
+                fp_updated_this_epoch = False
                 do_fp_reduction_this_epoch = (self.do_fp_reduction) and (epoch>=self.fp_reduction_start_epoch) and (epoch%self.fp_reduction_interval==0)
-                fp_iterator = iter(self.train_fp_data_loader)
+                #fp_iterator = iter(self.train_fp_data_loader)
+            if do_fp_reduction_this_epoch:
+                if self.first_time_update_fp and epoch>=self.update_fp_crops_start_epoch:
+                    self.__save_model_weights(epoch-1, 0.0, tmp_save=True) #save as last epoch
+                    self.iterative_update_fp_crops() # --> define self.train_fp_dataset
+                    self.assign_train_fp_dataset()
+                    self.model.train()
+                    self.first_time_update_fp = False
+                    fp_updated_this_epoch = True
+                assert train_dataset.img_size == self.train_fp_dataset.img_size
+                train_dataset = ConcatDataset([train_dataset, self.train_fp_dataset])
+                train_dataset.img_size = self.train_fp_dataset.img_size
 
-            for i, batched_data in tqdm(enumerate(self.train_dataloader), total=n_batch):
+            train_dataloader = DataLoader(train_dataset,
+                                           batch_size=cfg.TRAIN["BATCH_SIZE"],
+                                           num_workers=cfg.TRAIN["NUMBER_WORKERS"],
+                                           shuffle=True, pin_memory=False
+                                           )
+            n_batch = len(train_dataloader)
+
+
+            for i, batched_data in tqdm(enumerate(train_dataloader), total=n_batch):
                 imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, _ = batched_data
                 
                 if (0): # if you had processed batch without dataloader, and use dataloader with B=1
@@ -324,12 +420,13 @@ class Trainer(object):
                     img_names = [_[0] for _ in img_names]
 
                 # fp reduction (load npy version) (still slow)
+                """
                 if self.do_fp_reduction and do_fp_reduction_this_epoch:
                     fp_data = next(fp_iterator)
                     cat = lambda t1,t2: torch.cat([t1,t2], dim=0) if type(t1)==torch.Tensor==type(t2) else t1+t2
                     merged_data = [cat(t1,t2) for t1,t2 in zip(batched_data, fp_data)]
                     imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, _ = merged_data
-
+                """
 
                 self.scheduler.step(len(self.train_dataloader)*epoch + i)
                 imgs = imgs.to(self.device)
@@ -340,9 +437,22 @@ class Trainer(object):
                 mbboxes = mbboxes.to(self.device)
                 lbboxes = lbboxes.to(self.device)
 
+                
                 p, p_d = self.model(imgs)
+                #print("epoch:", epoch)
+                #print("imgs.shape", imgs.shape)
+                #print("p.shape", [_.shape for _ in p])
+                #print("p_d.shape", [_.shape for _ in p_d])
+                #print("="*50)
+                #print("len(p_d)", len(p_d))
+                #print("set(p_d.shape)", set([_.shape for _ in p_d]))
+                #print("len(set(p_d.shape))", len(set([_.shape for _ in p_d])))
+                #print()
+
                 loss, loss_ciou, loss_conf, loss_cls = self.criterion(p, p_d, label_sbbox, label_mbbox,
                                                   label_lbbox, sbboxes, mbboxes, lbboxes)
+                #assert False
+                #break
                 loss = loss / self.accumulate  ## ccy
                 if self.fp_16:
                     with amp.scale_loss(loss, self.optimizer) as scaled_loss:
@@ -425,6 +535,7 @@ class Trainer(object):
                     logger.info("  ===test CPM:{:.3f}".format(cpm_dist))
                 if self.do_fp_reduction and self.do_update_fp_crops and epoch>=self.update_fp_crops_start_epoch:
                     # (1) merge original fp data into training sets (only merge once!!) before update fp crops
+                    """
                     if (self.merging_train_and_ori_fp_set):
                         img_size = self.train_dataset.img_size
                         assert img_size == self.train_fp_dataset.img_size
@@ -436,9 +547,12 @@ class Trainer(object):
                                                             shuffle=True, pin_memory=False
                                                             )
                         self.merging_train_and_ori_fp_set = False
+                    """
                     # (2) make new fp crops and new fp dataset (update interval == validation interval*2)
-                    if (epoch % (self.eval_interval*2) == 0):
+                    if (epoch % (self.eval_interval*2) == 0) and (not fp_updated_this_epoch):
                         self.iterative_update_fp_crops()
+                        self.assign_train_fp_dataset()
+                        self.model.train()
 
             end = time.time()
             logger.info("  ===cost time:{:.4f}s".format(end - start))
@@ -538,6 +652,7 @@ class Trainer(object):
                 n_batch = len(self.test_dataloader)
                 print("eval n_batch in test_dataloader:", n_batch)
                 gt_lut = {}
+                times = []
                 for i, (imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, valid_bboxes)  in tqdm(enumerate(self.test_dataloader), total=n_batch):
                     if (0):
                         imgs = imgs[0]
@@ -552,7 +667,9 @@ class Trainer(object):
                     imgs = imgs.to(self.device)
                     for img, img_name, shape_before_pad, valid_bbox in zip(imgs, img_names, shapes_before_pad, valid_bboxes):
                         #print("(Eval) Current img:", img_name)
-                        bboxes_prd, box_raw_data, sub_log_txt = self.evaluator.get_bbox(img, multi_test=False, flip_test=False, shape_before_pad=shape_before_pad)
+                        t_start = time.time()
+                        bboxes_prd, box_raw_data, sub_log_txt, bboxes_prd_no_nms = self.evaluator.get_bbox(img, multi_test=False, flip_test=False, shape_before_pad=shape_before_pad)
+                        times.append(time.time()-t_start)
                         #print("bboxes_prd:", bboxes_prd)
                         #print("type of bboxes_prd", type(bboxes_prd))
                         #print("bboxes_prd max", bboxes_prd.max(axis=0))
@@ -563,6 +680,9 @@ class Trainer(object):
                         if len(bboxes_prd) > 0 and (not self.batch_1_eval):
                             bboxes_prd[:, :6] = (bboxes_prd[:, :6] / img.size(1)) * cfg.VAL['TEST_IMG_BBOX_ORIGINAL_SIZE'][0]
                         self.evaluator.store_bbox(img_name+"_test", bboxes_prd)
+                        # if need store raw data
+                        if self.eval_store_raw_bbox:
+                            self.evaluator.store_bbox(img_name+"_test_raw", bboxes_prd_no_nms)
                         valid_bbox = valid_bbox.cpu().tolist()
                         gt_lut[img_name] = valid_bbox
                     
@@ -578,6 +698,8 @@ class Trainer(object):
                 #else:
                 area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou, fp_bboxes_all_pid = calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=20, th_step=0.01, det_tp_iou_thresh=self.det_tp_iou_thresh, return_fp_bboxes=True)
             log_txt += txt + "\n" + sub_log_txt
+            avg_inference_time = sum(times)/len(times) if len(times)!=0 else "N/A"
+            log_txt += "\n" + "Average inference time: {} sec".format(avg_inference_time)
             plt.savefig(os.path.join(self.checkpoint_save_dir, 'froc_test.png'))
             if hasattr(self, "current_epoch"): # from train3D.py
                 out_log_name = os.path.join(self.checkpoint_save_dir, 'evaluate_log_e{}.txt'.format(self.current_epoch))
@@ -626,6 +748,7 @@ class Trainer(object):
         new_fp_evaluator.clear_predict_file()
 
         # (1) run eval on training set to generate bbox files
+        self.model.eval()
         with torch.no_grad():
             start_time=time.time()
             if 1: 
@@ -639,7 +762,8 @@ class Trainer(object):
                             print("fp(1) pid:", img_name)
                             continue
                         #print("(FP reduction) Current img:", img_name)
-                        bboxes_prd, box_raw_data, sub_log_txt = new_fp_evaluator.get_bbox(img, multi_test=False, flip_test=False, shape_before_pad=shape_before_pad)
+                        evaluator_out = new_fp_evaluator.get_bbox(img, multi_test=False, flip_test=False, shape_before_pad=shape_before_pad)
+                        bboxes_prd = evaluator_out[0]
                         #log_txt += sub_log_txt
                         new_fp_evaluator.store_bbox(img_name+"_test_fp_tmp", bboxes_prd)
                         valid_bbox = valid_bbox.cpu().tolist()
@@ -660,13 +784,21 @@ class Trainer(object):
                     continue
 
                 if topk==None:
-                    k=5 # top k fp to **choose** in "random_crop_3D"
+                    k=cfg.TRAIN["FP_REDUCTION_CROP_NCOPY"] # top k fp to **choose** in "random_crop_3D"
                 else:
                     k=topk
                 img = img.squeeze_(-1).to(self.device)
                 fp_bboxes = fp_bboxes_all_pid[img_name] # shape (?, 8)
-                top_k_hard_fp_idx = fp_bboxes[:, 6].argsort()[-k:][::-1]
-                top_k_hard_fp = fp_bboxes[top_k_hard_fp_idx] # shape (k, 8)
+                try:
+                    top_k_hard_fp_idx = fp_bboxes[:, 6].argsort()[-k:][::-1]
+                    top_k_hard_fp = fp_bboxes[top_k_hard_fp_idx] # shape (k, 8)
+                except:
+                    if len(fp_bboxes.shape)==1 and fp_bboxes.shape[0]==8:
+                        top_k_hard_fp = fp_bboxes.reshape((1,8))
+                    else:
+                        print("Unable to update fp for pid={}".format(img_name))
+                        continue
+                
                 to_crop_fp = torch.tensor(top_k_hard_fp[:,:6], device=self.device, dtype=torch.float32)
                 if len(to_crop_fp)==0: #no fp
                     continue
@@ -680,12 +812,18 @@ class Trainer(object):
 
                 also_crop_boxes = torch.tensor(gt_lut[img_name], dtype=torch.float32, device=self.device) # (n,8)
                 for j in range(len(to_crop_fp)): # range(k)
-                    try:
-                        cropped_img, cropped_box = random_crop.random_crop_3D(img, to_crop_fp[j].unsqueeze(0), cfg.TRAIN["TRAIN_IMG_SIZE"], cfg.TRAIN["TRAIN_IMG_SIZE"], also_crop_boxes=also_crop_boxes)
-                    except Exception as e:
+                    for _ in range(100):
+                        try:
+                            cropped_img, cropped_box = random_crop.random_crop_3D(img, to_crop_fp[j].unsqueeze(0), cfg.TRAIN["TRAIN_IMG_SIZE"], cfg.TRAIN["TRAIN_IMG_SIZE"], also_crop_boxes=also_crop_boxes)
+                            break
+                        except Exception as e:
+                            err = e
+                            continue 
+                    else:
+                        print('\nCropped failed at pid={}, img: {}, box: {}'.format(img_name, img.squeeze().shape, to_crop_fp[j]))
                         print("Encounter error in random crop: {}".format(e.__repr__()))
-                        raise
-                        continue         
+                        raise err
+
                     cropped_img, cropped_box = cropped_img[0], cropped_box[0] # only remove list, shape (C, new_d, new_h, new_w)
                     if (0) and j==0: # random crop debug view
                         view_img = cropped_img.squeeze(0).cpu().numpy()
@@ -731,8 +869,183 @@ class Trainer(object):
         #    print(pid, img.shape)
 
 
-
+    def assign_train_fp_dataset(self, crop_prefix="iterative_fp_crops_tmp", topk=5, crop_save_folder_root=ITERATIVE_FP_CROP_PATH):
+        train_fp_dataset = LungDataset.load(self.lung_dataset_name)
+        train_fp_dataset.data = self.train_data_original
+        #pids = [pid for _,_,pid in self.train_dataset.ori_dataset.data]
+        #train_fp_dataset.get_data(pids)
+        train_fp_dataset.set_random_crop(crop_prefix, topk, True, crop_save_folder_root, None)
+        self.train_fp_dataset = YOLO4_3DDataset(train_fp_dataset, classes=[0, 1], img_size=cfg.TRAIN["TRAIN_IMG_SIZE"], cache_size=0, batch_1_eval=False, use_zero_conf=cfg.TRAIN["FP_REDUCTION_USE_ZERO_CONF"])
+        self.train_fp_data_loader = DataLoader(self.train_fp_dataset,
+                                    batch_size=cfg.TRAIN["BATCH_SIZE"],
+                                    num_workers=cfg.TRAIN["NUMBER_WORKERS"]//2,
+                                    shuffle=True, pin_memory=False
+                                    )
         
+    def _debug_train(self):
+        writer = self.writer
+        logger = self.logger
+        logger.info("Training start,img size is: {},batchsize is: {:d},work number is {:d}".format(cfg.TRAIN["TRAIN_IMG_SIZE"],cfg.TRAIN["BATCH_SIZE"],cfg.TRAIN["NUMBER_WORKERS"]))
+        try:
+            logger.info("Train datasets number is : {}".format(len(self.train_dataset)))
+        except:
+            pass
+
+        if self.fp_16: self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level='O1', verbosity=0)
+        logger.info("        =======  start  training   ======     ")
+        shutil.copyfile("config/yolov4_config.py", os.path.join(self.checkpoint_save_dir, "training_config.txt"))
+        #area_small, area_big, plt = self.evaluate()
+        self.optimizer.zero_grad() ## ccy
+        for epoch in range(180, self.epochs+1):
+            start = time.time()
+            self.model.train()
+            self.current_epoch = epoch
+
+            mloss = torch.zeros(5)
+            logger.info("===Epoch:[{}/{}]===".format(epoch, self.epochs))
+
+            train_dataset = self.train_dataset
+            if self.do_fp_reduction:
+                do_fp_reduction_this_epoch = (self.do_fp_reduction) and (epoch>=self.fp_reduction_start_epoch) and (epoch%self.fp_reduction_interval==0)
+                #fp_iterator = iter(self.train_fp_data_loader)
+            if do_fp_reduction_this_epoch:
+                if self.first_time_update_fp and epoch>=self.update_fp_crops_start_epoch:
+                    #self.iterative_update_fp_crops() # --> define self.train_fp_dataset
+                    self.assign_train_fp_dataset()
+                    print("Assignied train_fp_dataset")
+                    self.first_time_update_fp = False
+                assert train_dataset.img_size == self.train_fp_dataset.img_size
+                train_dataset = ConcatDataset([train_dataset, self.train_fp_dataset])
+                train_dataset.img_size = self.train_fp_dataset.img_size
+
+            train_dataloader = DataLoader(train_dataset,
+                                           batch_size=cfg.TRAIN["BATCH_SIZE"],
+                                           num_workers=cfg.TRAIN["NUMBER_WORKERS"],
+                                           shuffle=True, pin_memory=False
+                                           )
+            n_batch = len(train_dataloader)
+
+
+            for i, batched_data in tqdm(enumerate(train_dataloader), total=n_batch):
+                imgs, label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes, img_names, shapes_before_pad, _ = batched_data
+                
+                self.scheduler.step(len(self.train_dataloader)*epoch + i)
+                imgs = imgs.to(self.device)
+                label_sbbox = label_sbbox.to(self.device)
+                label_mbbox = label_mbbox.to(self.device)
+                label_lbbox = label_lbbox.to(self.device)
+                sbboxes = sbboxes.to(self.device)
+                mbboxes = mbboxes.to(self.device)
+                lbboxes = lbboxes.to(self.device)
+
+                p, p_d = self.model(imgs)
+                loss, loss_ciou, loss_conf, loss_cls = self.criterion(p, p_d, label_sbbox, label_mbbox,
+                                                  label_lbbox, sbboxes, mbboxes, lbboxes)
+                loss = loss / self.accumulate  ## ccy
+                if self.fp_16:
+                    with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                        scaled_loss.backward()
+                else:
+                    loss.backward()
+                # Accumulate gradient for x batches before optimizing
+                if i % self.accumulate == 0:
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
+
+                if cfg.MODEL["VERBOSE_SHAPE"]:
+                    raise EOFError("One batch end")
+                # Update running mean of tracked metrics
+
+
+
+                conf_data = p_d[0][..., 6:7].detach().cpu().numpy().flatten()
+                pr999_p_conf = np.sort(conf_data)[-8]
+                loss_items = torch.tensor([loss_ciou, loss_conf, loss_cls, loss, pr999_p_conf])
+                mloss = (mloss * i + loss_items) / (i + 1)
+
+                if self.may_change_optimizer and cfg.TRAIN["USE_SGD_BEFORE_LOSS_LOWER_THAN_THRESH"]:
+                    if loss_conf < cfg.TRAIN["CHANGE_OPTIMIZER_THRESH"]:
+                        print("Change optimizer to {}".format(self.optimizer_type))
+                        self.may_change_optimizer = False
+                        current_lr = self.scheduler.get_last_lr()
+                        if self.optimizer_type=="ADAM":
+                            self.optimizer = optim.Adam(self.model.parameters(), lr=cfg.TRAIN["LR_INIT"], weight_decay=cfg.TRAIN["WEIGHT_DECAY"]) 
+                        elif self.optimizer_type=="ADABELIEF":
+                            self.optimizer = AdaBelief(self.model.parameters(), lr=cfg.TRAIN["LR_INIT"], eps=1e-16, betas=(0.9,0.999), weight_decouple = True, rectify = False)
+
+                        self.scheduler = cosine_lr_scheduler.CosineDecayLR(self.optimizer,
+                                                          T_max=self.epochs*len(self.train_dataloader),
+                                                          lr_init=current_lr,
+                                                          lr_min=cfg.TRAIN["LR_END"],
+                                                          warmup=cfg.TRAIN["WARMUP_EPOCHS"]*len(self.train_dataloader))
+                # len(self.train_dataloader) / (cfg.TRAIN["BATCH_SIZE"]) * epoch + iter
+                # Print batch results
+                if i % 10 == 0:
+
+                    logger.info("  === Epoch:[{:3}/{}],step:[{:3}/{}],img_size:[{}],total_loss:{:.4f}|loss_ciou:{:.4f}|loss_conf:{:.4f}|loss_cls:{:.4f}|lr:{:.4f}|train_pr99:{:.4f}".format(
+                        epoch, self.epochs, i, len(self.train_dataloader) - 1, self.train_dataset.img_size,mloss[3], mloss[0], mloss[1],mloss[2],self.optimizer.param_groups[0]['lr'],
+                        mloss[4]
+                    ))
+                    if writer:
+                        writer.add_scalar('loss_ciou', mloss[0],
+                                        len(self.train_dataloader) * epoch + i)
+                        writer.add_scalar('loss_conf', mloss[1],
+                                        len(self.train_dataloader) * epoch + i)
+                        writer.add_scalar('loss_cls', mloss[2],
+                                        len(self.train_dataloader) * epoch + i)
+                        writer.add_scalar('train_loss', mloss[3],
+                                        len(self.train_dataloader) * epoch + i)
+                        writer.add_scalar('train_pr99.9_p_conf', mloss[4],
+                                        len(self.train_dataloader) * epoch + i)
+                        writer.add_scalar('train_lr', self.optimizer.param_groups[0]["lr"],
+                                        len(self.train_dataloader) * epoch + i)
+                # multi-sclae training (320-608 pixels) every 10 batches
+                if self.multi_scale_train and (i+1) % 10 == 0:
+                    self.train_dataset.img_size = random.choice(range(10, 20)) * 32
+
+            if (epoch % self.eval_interval==0) or (epoch == self.epochs) or (epoch == self.early_stopping_epoch):# or (do_fp_reduction_this_epoch): #tag:Val #20
+                if cfg.TRAIN["DATA_TYPE"] == 'VOC' or cfg.TRAIN["DATA_TYPE"] == 'ABUS' or cfg.TRAIN["DATA_TYPE"] == 'LUNG':
+                    area_dist, area_iou, plt, pr999_p_conf, cpm_dist, cpm, max_sens_dist, max_sens_iou, bboxes_pred = self.evaluate(return_box=True)
+                    ##TODO: add fp reduction by throwing fp back!
+                    logger.info("===== Validate =====".format(epoch, self.epochs))
+                    if False and writer:
+                        writer.add_scalar('AUC (IOU)', area_iou, epoch)
+                        writer.add_scalar('EVAL_pr99.9_p_conf', pr999_p_conf, epoch)
+                        writer.add_scalar('CPM (IOU)', cpm, epoch)
+                        writer.add_scalar('AUC (dist)', area_dist, epoch)
+                        writer.add_scalar('CPM (dist)', cpm_dist, epoch)
+                        writer.add_scalar('Max sens(iou)', max_sens_iou, epoch)
+                        writer.add_scalar('Max sens(dist)', max_sens_dist, epoch)
+                    save_per_epoch = 1
+                    if epoch % save_per_epoch==0:
+                        print("skip saving model")
+                        #self.__save_model_weights(epoch, cpm_dist)
+                    logger.info('save weights done')
+                    logger.info("  ===test CPM:{:.3f}".format(cpm_dist))
+                if self.do_fp_reduction and self.do_update_fp_crops and epoch>=self.update_fp_crops_start_epoch:
+                    # (1) merge original fp data into training sets (only merge once!!) before update fp crops
+                    """
+                    if (self.merging_train_and_ori_fp_set):
+                        img_size = self.train_dataset.img_size
+                        assert img_size == self.train_fp_dataset.img_size
+                        self.train_dataset = torch.utils.data.ConcatDataset([self.train_dataset, self.train_fp_dataset])
+                        self.train_dataset.img_size = img_size
+                        self.train_dataloader = DataLoader(self.train_dataset,
+                                                            batch_size=cfg.TRAIN["BATCH_SIZE"]*2,
+                                                            num_workers=cfg.TRAIN["NUMBER_WORKERS"],
+                                                            shuffle=True, pin_memory=False
+                                                            )
+                        self.merging_train_and_ori_fp_set = False
+                    """
+                    # (2) make new fp crops and new fp dataset (update interval == validation interval*2)
+                    if (epoch % (self.eval_interval*2) == 0):
+                        self.iterative_update_fp_crops()
+
+            end = time.time()
+            logger.info("  ===cost time:{:.4f}s".format(end - start))
+            if epoch == self.early_stopping_epoch:
+                break
+        logger.info("=====Training Finished.   best_test_CPM:{:.3f}%====".format(self.best_cpm))
 
         
 
@@ -808,7 +1121,8 @@ class Trainer(object):
                             print("fp(1) pid:", img_name)
                             continue
                         #print("(FP reduction) Current img:", img_name)
-                        bboxes_prd, box_raw_data, sub_log_txt = fp_evaluator.get_bbox(img, multi_test=False, flip_test=False, shape_before_pad=shape_before_pad)
+                        evaluator_out = fp_evaluator.get_bbox(img, multi_test=False, flip_test=False, shape_before_pad=shape_before_pad)
+                        bboxes_prd, sub_log_txt = evaluator_out[0], evaluator_out[2]
                         log_txt += sub_log_txt
                         fp_evaluator.store_bbox(img_name+"_test", bboxes_prd)
                         valid_bbox = valid_bbox.cpu().tolist()
@@ -921,7 +1235,7 @@ class FastImageDataset():
 
 if __name__ == "__main__":
     pass
-    #raise EOFError()
+    raise EOFError()
     weight_path_tuple = ('train_rc_config_5.6.5_resnest_shallower_f1', 1, 300)
     resume = False
     exp_name = "debug"

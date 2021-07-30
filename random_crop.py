@@ -108,7 +108,7 @@ def random_crop_3D(image, boxes, min_shape=None, max_shape=None, use_all_box=Fal
             box = random.choice(boxes_preserve)
         #print("Using bbox:", box)
   
-        ori_z1, ori_y1, ori_x1, ori_z2, ori_y2, ori_x2 = box[:6].clone()
+        ori_z1, ori_y1, ori_x1, ori_z2, ori_y2, ori_x2 = box[:6].clone().tolist()
         ori_box_d, ori_box_h, ori_box_w = ori_z2-ori_z1, ori_y2-ori_y1, ori_x2-ori_x1
         #Center of bounding boxes
         center_bb = (box[:3] + box[3:6])/2.0 # ( (z1,y1,x1) + (z2,y2,x2) ) / 2, shape==(#obj=1, 3)
@@ -150,14 +150,23 @@ def random_crop_3D(image, boxes, min_shape=None, max_shape=None, use_all_box=Fal
                 x_max = original_w-1-new_w if original_w-1-new_w >=0 else 0
                 y_max = original_h-1-new_h if original_h-1-new_h >=0 else 0
                 z_max = original_d-1-new_d if original_d-1-new_d >=0 else 0
-                left = random.uniform( max(min(ori_x1+ori_box_w-new_w+away_x, x_max), 0), min(max(ori_x1-away_x,0), x_max) )
+
+                x11 = max(min(ori_x1+ori_box_w-new_w+away_x, x_max), 0)
+                x12 = min(max(ori_x1-away_x,0), x_max)
+                left = random.uniform(x11, x12)
                 right = left + new_w
-                top =  random.uniform( max(min(ori_y1+ori_box_h-new_h+away_y, y_max), 0), min(max(ori_y1-away_y,0), y_max) )
+
+                y11 = max(min(ori_y1+ori_box_h-new_h+away_y, y_max), 0)
+                y12 = min(max(ori_y1-away_y,0), y_max)
+                top =  random.uniform(y11 , y12)                      
                 bottom = top + new_h
                 if new_d*2 >= ori_box_d: # if True, ensure center_bb in crop 
-                    z1 = random.uniform( max(min(ori_z1+ori_box_d-new_d+away_z, z_max), 0), min(max(ori_z1-away_z,0), z_max) )
+                    z11 = max(min(ori_z1+ori_box_d-new_d+away_z, z_max), 0)
+                    z12 = min(max(ori_z1-away_z,0), z_max)
                 else:
-                    z1 = random.uniform( max(min(ori_z1+ori_box_d/2+away_z, z_max), 0), min(max(ori_z1+ori_box_d/2-new_d/2-away_z,0), z_max) )
+                    z11 = max(min(ori_z1+ori_box_d/2+away_z, z_max), 0)
+                    z12 = min(max(ori_z1+ori_box_d/2-new_d/2-away_z,0), z_max)
+                z1 = random.uniform(z11, z12)
                 z2 = z1 + new_d
             try:
                 assert 0<=left<=right<=original_w
@@ -227,8 +236,8 @@ def random_crop_3D(image, boxes, min_shape=None, max_shape=None, use_all_box=Fal
                                     center_bb, x))
                     break
                 else:
-                    raise TypeError("Algorithm Error: the random cropped voi doesn't include the original voi center\n ori_center:{}\ncropped:{}".format(
-                                    center_bb, [int(z1), int(top), int(left), int(z2), int(bottom), int(right)]))
+                    raise TypeError("Algorithm Error: the random cropped voi doesn't include the original voi center\n ori_center:{}\ncropped:{}\nBounder:{}".format(
+                                    center_bb, [int(z1), int(top), int(left), int(z2), int(bottom), int(right)], {"z":[z11,z12], "y":[y11,y12], "x":[x11,x12]} ) )
             
         
         #take matching bounding box
@@ -441,7 +450,7 @@ def random_crop_preprocessing(img, bboxes, transform, target_transform, target_i
     return out
 
                 
-def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape=(128,128,128), n_copy=10, save=False, device="cuda", stack_before_process=False, load_fast_5mm=False, load_fast_2d5mm=False, use_all_box=False, use_extra_fp=False, use_copy_paste=False):
+def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape=(128,128,128), n_copy=10, save=False, device="cuda", stack_before_process=False, load_fast_5mm=False, load_fast_2d5mm=False, use_all_box=False, use_extra_fp=False):
     """ target_input_shape must be multiples of 32, otherwise it will be very complicated!!! """
     global Tumor, LungDataset
     from dataset import Tumor, LungDataset
@@ -482,7 +491,8 @@ def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape
         #dataset.get_data(["21678302", "6993538"])
 
         # processing
-        dataset.data = dataset.data[410:] #[64:]
+        dataset.data = dataset.data[:]
+        #dataset.data = dataset.data[410:] #[64:] # weird image
         #dataset.data = dataset.data[328:]
         
     df = pd.read_excel(EXTRA_FP_EXCEL_PATH, sheet_name="Sheet1", converters={'pid':str,'bbox':str, 'isFP':int})
@@ -509,10 +519,6 @@ def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape
             if (0): #debug
                 AnimationViewer(img.squeeze(-1).cpu().numpy(), also_crop_boxes[:,:6].tolist(), note="watch GT")
                 continue
-        elif use_copy_paste:
-            ...
-
-
 
             
 
@@ -550,9 +556,9 @@ def _dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape
 
 
             if load_fast_5mm:
-                name = "random_crop_{}_{}_fake1.25_from_5mm_max_c{}.pkl".format(target_input_shape_text, target_transform_text, j+1)    
+                name = "another_data_{}_{}_fake1.25_from_5mm_max_c{}.pkl".format(target_input_shape_text, target_transform_text, j+1)    
             elif load_fast_2d5mm:
-                name = "random_crop_{}_{}_fake1.25_from_2.5mm_max_c{}.pkl".format(target_input_shape_text, target_transform_text, j+1)   
+                name = "another_data_{}_{}_fake1.25_from_2.5mm_max_c{}.pkl".format(target_input_shape_text, target_transform_text, j+1)   
             else:
                 #name = "random_crop_{}_{}_c{}.pkl".format(target_input_shape_text, target_transform_text, j+1)
                 name = "another_data_{}_{}_c{}.pkl".format(target_input_shape_text, target_transform_text, j+1) 
@@ -584,18 +590,50 @@ def _test_pkl():
         print(f"bbox {i}:", bbox)
         AnimationViewer(img, bbox)
 
+def _debug(device="cuda"):
+    global cfg
+    import config.yolov4_config as cfg
+    pid = "3883959"
+
+    img = torch.zeros((384,272,480), device=device)
+    bbox = torch.tensor([0.0000, 0.0000, 14.7732, 383.0000, 268.8824, 479.0000, 0, 1], device=device)
+    also_crop_boxes = None
+
+
+    img = img.unsqueeze(0)
+    bbox = bbox.unsqueeze(0)
+    for i in tqdm(range(20)):
+        for _ in range(100): # try 100 times
+            try:
+                cropped_img, cropped_box = random_crop_3D(img, bbox, cfg.TRAIN["TRAIN_IMG_SIZE"], cfg.TRAIN["TRAIN_IMG_SIZE"], also_crop_boxes=also_crop_boxes)
+                break
+            except Exception as e:
+                err = e
+                continue
+        else:
+            raise err
+    print("Fin")
+    #bbox = bbox.unsqueeze(0)
+
 
 if __name__ == "__main__":
     #_test_inter()
     #_test_iou()
     #_test_random_crop()
     #_test_pixelspacing()
-    device = "cuda"
-    raise EOFError
+    _debug()
+    assert False
+    device = "cpu"
+    #raise EOFError
     #_dataset_preprocessing(save=False, n_copy=2, target_transform=(1.25, 0.75, 0.75),
     #                        target_input_shape=(128, 128, 128), device=device, stack_before_process=False,
-    #                        load_fast_5mm=False, load_fast_2d5mm=True)
+    #                        load_fast_5mm=True, load_fast_2d5mm=False, use_all_box=True, use_extra_fp=True)
+    _dataset_preprocessing(save=False, n_copy=20, target_transform=(1.25, 0.75, 0.75),
+                            target_input_shape=(128, 128, 128), device=device, stack_before_process=False,
+                            load_fast_5mm=True, load_fast_2d5mm=False, use_all_box=True, use_extra_fp=True)
+    #raise EOFError
     _dataset_preprocessing(save=True, n_copy=20, target_transform=(1.25, 0.75, 0.75),
                             target_input_shape=(128, 128, 128), device=device, stack_before_process=False,
-                            load_fast_5mm=False, load_fast_2d5mm=False, use_all_box=True, use_extra_fp=True)
+                            load_fast_5mm=False, load_fast_2d5mm=True, use_all_box=True, use_extra_fp=True)
+                            
     #_test_pkl()

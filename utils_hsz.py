@@ -13,13 +13,15 @@ class AnimationViewer(object):
     Modified to support scrolling and adding bbox
     bbox is of format [z1,y1,x1,z2,y2,x2]
     """
-    def __init__(self, volume, bbox=None, verbose=True, note="", draw_face=True):
+    def __init__(self, volume, bbox=None, verbose=True, note="", draw_face=True, bbox2=None, bold_box=False):
         self.image = volume
         self.draw_face = draw_face
         self.bbox=bbox  if type(bbox)!=type(None) else ()
+        self.bbox2=bbox2  if type(bbox2)!=type(None) else ()
         self.pixel_min = np.min(volume)
         self.pixel_max = np.max(volume)
         self.volume_shape = volume.shape
+        self.bbox_linewidth = 4 if bold_box else 1
         self.note = f"{note}: " if note !="" else ""
         print(f'shape={self.image.shape} maxvalue={self.pixel_max} minvalue={self.pixel_min}')
         if verbose:
@@ -73,10 +75,20 @@ class AnimationViewer(object):
             if z1 <= ax.index <= z2:
                 w, h = x2-x1, y2-y1
                 if self.draw_face and (ax.index in [z1,z2]):
-                    rect = Rectangle((x1,y1), w, h, linewidth=1,edgecolor='r',facecolor='r')
+                    rect = Rectangle((x1,y1), w, h, linewidth=self.bbox_linewidth, edgecolor='r',facecolor='r')
                 else:
-                    rect = Rectangle((x1,y1), w, h, linewidth=1,edgecolor='r',facecolor='none')
+                    rect = Rectangle((x1,y1), w, h, linewidth=self.bbox_linewidth, edgecolor='r',facecolor='none')
                 ax.add_patch(rect)
+        if len(self.bbox2) != 0:
+            for gt_box in self.bbox2:
+                z1,y1,x1,z2,y2,x2 = gt_box
+                if z1 <= ax.index <= z2:
+                    w, h = x2-x1, y2-y1
+                    #if self.draw_face and (ax.index in [z1,z2]):
+                    #    rect = Rectangle((x1,y1), w, h, linewidth=1,edgecolor='blue',facecolor='blue')
+                    #else:
+                    rect = Rectangle((x1,y1), w, h, linewidth=self.bbox_linewidth, edgecolor='#0055ff',facecolor='none')
+                    ax.add_patch(rect)
 
     def multi_slice_viewer(self):
         fig, ax = plt.subplots()

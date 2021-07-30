@@ -10,7 +10,7 @@ import utils_hsz
 import config.yolov4_config as cfg
 #import config.yolov4_config as cfg
 
-def fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k=3, check_gt=False, batch_1_eval=False, fix_spacing=(0,0,0), use_lung_voi=False, use_5mm=False, load_5mm_pkl=False):
+def fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k=3, check_gt=False, batch_1_eval=False, fix_spacing=(0,0,0), use_lung_voi=False, use_5mm=False, load_5mm_pkl=False, view_raw=False, bold_box=True):
     """
     evaluate predictiob result based on...
     1. predicted bbox npy
@@ -25,8 +25,13 @@ def fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k=3, check_gt=False
     elif npy_name.endswith(".pkl"):
         with open(pjoin(global_variable.NPY_SAVED_PATH, str(pid), npy_name), "rb") as f:
             img, pkl_gt = pickle.load(f)
-        
-    pred_boxes = np.load(pjoin(npy_dir_path, f"{pid}_test.npy"))
+
+    # normal or raw output (no nms)   
+    if view_raw:
+        pred_boxes = np.load(pjoin(npy_dir_path, f"{pid}_test_raw.npy"))
+    else:
+        pred_boxes = np.load(pjoin(npy_dir_path, f"{pid}_test.npy"))
+    
     boxes={}
     lowest_conf = float("-inf")
     for box in pred_boxes:
@@ -82,7 +87,10 @@ def fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k=3, check_gt=False
         pad_d, pad_h, pad_w = pad_d-img.shape[0], pad_h-img.shape[1], pad_w-img.shape[2]
         pad_img = np.pad(img, [[0,pad_d],[0,pad_h],[0,pad_w]])
         img = pad_img
-    utils_hsz.AnimationViewer(img, bbox=[box for box, _ in boxes], verbose=False)
+    bbox2 = [b[:6] for b in gt_boxes] if check_gt else None
+    print("A", [box for box, _ in boxes])
+    print("B", bbox2)
+    utils_hsz.AnimationViewer(img, bbox=[box for box, _ in boxes], verbose=False, bbox2=bbox2, bold_box=bold_box)
 
 def plot_img_with_bbox(pid = "10755333", extra_bbox=(), use_5mm=False, use_2d5mm=False, add_notFP=False):
     dataset = LungDataset.load(CURRENT_DATASET_PKL_PATH)
@@ -114,10 +122,10 @@ def plot_img_with_bbox(pid = "10755333", extra_bbox=(), use_5mm=False, use_2d5mm
     utils_hsz.AnimationViewer(img, bbox=boxes)
 
 if __name__ == "__main__":
-    plot_img_with_bbox(use_2d5mm=True, add_notFP=True, pid=None)
-    raise EOFError
+    #plot_img_with_bbox(use_2d5mm=True, add_notFP=True, pid=None)
+    #raise EOFError
     #pid = "1926851"
-    top_k = 4
+    top_k = 1000
     fix_spacing = (1.25,0.75,0.75)
     npy_name = "hu+norm_256x256x256.npy"
     exp_name = "train_256_256_256_1"
@@ -131,7 +139,7 @@ if __name__ == "__main__":
     batch_1_eval = True
     npy_name = None
     use_lung_voi = True
-    exp_name = "train_fake_1.25mm_config_1_f3" #"train_rc_config_5.6.4_resnest_shallower_f0_fake_1.25_testing"
+    exp_name = "train_rc_config_5.15_attnetion2_layer0_f2" #"train_rc_config_5.6.4_resnest_shallower_f0_fake_1.25_testing"
     fix_spacing = (1.25, 0.75, 0.75)
     use_5mm = True
     load_5mm_pkl = "fast_test_max_5.0x0.75x0.75.pkl"
@@ -140,16 +148,30 @@ if __name__ == "__main__":
     npy_dir_path = pjoin("checkpoint", exp_name, "evaluate")
 
     ## testing (draw_froc.py)
+    exp_name = "train_rc_config_5.11_csp+group_iterative_fp_update_f1_EXTRA_FP"
     #exp_name += "_train_debug"
-    #exp_name += "_testing"
-    #epoch = 187
+    exp_name += "_testing"
+    epoch = 300
     #npy_dir_path = pjoin("preidction", exp_name, str(epoch), "evaluate")
-    #npy_dir_path = pjoin("preidction", exp_name, str(epoch)+"_conf0.015", "evaluate")
+    npy_dir_path = pjoin("preidction", exp_name, str(epoch)+"_conf0.015", "evaluate")
+    use_5mm = False
+    load_5mm_pkl = None
 
-    pids = os.listdir(npy_dir_path)
-    #pids = [""]
+    ## choosing pid
+    #pids = os.listdir(npy_dir_path)
+    #pids = ["1034114"]
+    pids = ["13564970"]
+    #pids = [ os.listdir(npy_dir_path)[26] ]
+    pids = ['28719691', '23829163', '28753759']
+
+    ## view_raw (mostly no use)
+    view_raw = False
+
+    ## bold box (whether to enhance bbox edge when visualization)
+    bold_box = True
+
     for fname in pids:
         pid = fname.split("_test")[0]
         print("pid:", pid)
-        fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k, check_gt=True, batch_1_eval=batch_1_eval, fix_spacing=fix_spacing, use_lung_voi=use_lung_voi, use_5mm=use_5mm, load_5mm_pkl=load_5mm_pkl)
+        fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k, check_gt=True, batch_1_eval=batch_1_eval, fix_spacing=fix_spacing, use_lung_voi=use_lung_voi, use_5mm=use_5mm, load_5mm_pkl=load_5mm_pkl, view_raw=view_raw, bold_box=bold_box)
 

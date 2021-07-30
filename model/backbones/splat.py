@@ -74,7 +74,7 @@ class SplAtConv3d(Module):
         gap = F.adaptive_avg_pool3d(gap, 1)
         gap = self.fc1(gap)
 
-        if self.use_bn:
+        if self.use_bn and gap.shape[0]>1:
             gap = self.bn1(gap)
         gap = self.relu(gap)
 

@@ -1,5 +1,13 @@
+try:
+    from model.YOLOv4 import YOLOv4
+    import sys
+except:
+    import sys
+    sys.path.append(r"D:/CH/LungDetection/training")
+
 import torch.nn as nn
 import torch
+
 
 
 class Yolo_head(nn.Module):
@@ -15,6 +23,7 @@ class Yolo_head(nn.Module):
 
     def forward(self, p):
         bs, nG = p.shape[0], p.shape[-1]
+        #print("p.shape:", p.shape)
         if self.__dims==3:
             p = p.view(bs, self.__nA, 7 + self.__nC, p.shape[-3], p.shape[-2], p.shape[-1]).permute(0, 3, 4, 5, 1, 2)
         else:
@@ -62,3 +71,56 @@ class Yolo_head(nn.Module):
         pred_bbox = torch.cat([pred_xywh, pred_conf, pred_prob], dim=-1)
 
         return pred_bbox.view(-1, p.size(-1)) if not self.training else pred_bbox
+
+
+def _test_model():
+    global YOLOv4, cfg
+    from model.YOLOv4 import YOLOv4
+    import config.yolov4_config as cfg
+    from memory_limiting import main as memory_limiting
+    anchors = torch.FloatTensor(cfg.MODEL["ANCHORS3D"])
+    strides = torch.FloatTensor(cfg.MODEL["STRIDES"])
+    dims = 3
+    nC = cfg.MODEL["ANCHORS_PER_SCLAE"] * (2 + 7)
+    device="cuda"
+    if device == "cpu":
+        memory_limiting(15*1000)
+
+    yolov4 = YOLOv4(weight_path=None, out_channels=nC, resume=False, dims=dims).to(device)
+    head_s = Yolo_head(nC=2, anchors=anchors[0], stride=strides[0], dims=dims).to(device)
+    head_m = Yolo_head(nC=2, anchors=anchors[1], stride=strides[1], dims=dims).to(device)
+    head_l = Yolo_head(nC=2, anchors=anchors[2], stride=strides[2], dims=dims).to(device)
+
+    yolov4.train()
+    head_s.train()
+    head_m.train()
+    head_l.train()
+
+    # try run
+    x = torch.randn(4,1,128,128,128).to(device)
+    x_s, x_m, x_l = yolov4(x)
+    print("After backbone")
+    #print(*[m[1].shape for m in [x_s, x_m, x_l]], sep="\n", end="\n"+"="*20+"\n")
+    print(*[m.shape for m in [x_s, x_m, x_l]], sep="\n", end="\n"+"="*20+"\n")
+    out = []
+    out_s = head_s(x_s)
+    out_m = head_m(x_m)
+    out_l = head_l(x_l)
+    print()
+    print("After heads")
+    # m[0]==p, m[1]==p_de (p, p_de have same shape)
+    print(*[m[1].shape for m in [out_s, out_m, out_l]], sep="\n", end="\n"+"="*20+"\n")
+    #print(*[m.shape for m in [out_s, out_m, out_l]], sep="\n", end="\n"+"="*20+"\n")
+    out.append(out_s)
+    out.append(out_m)
+    out.append(out_l)
+
+    if True: # training
+        p, p_d = list(zip(*out))
+        return p, p_d  # smalll, medium, large
+    else:
+        p, p_d = list(zip(*out))
+        return p, torch.cat(p_d, 0)
+
+if __name__ == "__main__":
+    _test_model()

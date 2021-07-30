@@ -161,6 +161,7 @@ def iou_xywh_numpy(boxes1, boxes2):
         inter_area = inter_section[..., 0] * inter_section[..., 1]
     union_area = boxes1_area + boxes2_area - inter_area
     IOU = 1.0 * inter_area / union_area
+    IOU = np.nan_to_num(IOU, nan=0)
     return IOU
 
 

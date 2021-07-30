@@ -412,9 +412,9 @@ class ResNet(nn.Module):
         #print("After maxpool:", x.shape)
 
   
-        x = self.layer1(x)
+        x4 = self.layer1(x)
         #print("layer1", x.shape)
-        x3 = self.layer2(x)
+        x3 = self.layer2(x4)
         #print("layer2", x3.shape)
         x2 = self.layer3(x3)
         #print("layer3", x2.shape)
@@ -423,7 +423,7 @@ class ResNet(nn.Module):
  
 
         if self.used_for_yolo:
-            return [x3, x2, x1]
+            return [x4, x3, x2, x1]
         else:
             x = self.avgpool(x1)
             #x = x.view(x.size(0), -1)

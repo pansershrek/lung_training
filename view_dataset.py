@@ -11,12 +11,16 @@ from utils_hsz import AnimationViewer
 import config.yolov4_config as cfg
 
 
-def test_lung_voi():
+def test_lung_voi(debug=False):
     dataset = LungDataset.load(CURRENT_DATASET_PKL_PATH)
     dataset.get_data(dataset.pids)
     #dataset.get_data(["25607996"])
     dataset.set_batch_1_eval(True, (1.25,0.75,0.75))
     dataset.set_lung_voi(True)
+
+    dataset2 = LungDataset.load(CURRENT_DATASET_PKL_PATH)
+    dataset2.set_batch_1_eval(True, (1.25,0.75,0.75))
+
     #err_fpath = pjoin(MASK_SAVED_PATH, "error_pid.txt")
     #with open(err_fpath, "r") as f:
     #    err_pids = f.read()[1:-1].split(",\n")
@@ -28,7 +32,12 @@ def test_lung_voi():
     max_shape_numel = 0
     for i, datum in tqdm(enumerate(dataset), total=len(dataset)):
         img, bboxes, pid = datum
-        #AnimationViewer(img.squeeze(-1).numpy(), bboxes[:,:6].tolist())
+        if debug:
+            dataset2.get_data([pid])
+            ori_img, _, _ = dataset2[0]
+            AnimationViewer(ori_img.squeeze(-1).numpy(), None, note="{} (ori)".format(pid))
+            AnimationViewer(img.squeeze(-1).numpy(), None, note=pid)
+            AnimationViewer(img.squeeze(-1).numpy(), bboxes[:,:6].tolist(), note=pid)
         numel = img.numel()
         if numel > max_shape_numel:
             max_shape = img.shape
@@ -129,13 +138,15 @@ def show_metadata(metadatas=("SliceThickness",), return_dic=False):
             print("{}: {}".format(md, count))
 
 
-def ct_ldct():
+def ct_ldct(return_pids=False):
     metadatas = show_metadata(["XRayTubeCurrent","ContrastBolusAgent", "ContrastBolusTotalDose"], return_dic=True)
     currents = metadatas["XRayTubeCurrent"]
     assert "BLANK" not in currents
     big_x = sum([pids for cur,pids in currents.items() if float(cur)>=100], [])
     small_x = sum([pids for cur,pids in currents.items() if float(cur)<100], [])
     print("Using XRayCurrent: CT={}, LDCT={}".format(len(big_x), len(small_x)))
+    if return_pids:
+        return {"CT":big_x, "LDCT":small_x}
 
     agents = metadatas["ContrastBolusAgent"]
     doses = metadatas["ContrastBolusTotalDose"]
@@ -152,10 +163,11 @@ def ct_ldct():
 
 
 if __name__ == "__main__":
-    #test_lung_voi()
+    #test_lung_voi(1)
     #test_data()
     #find_data("21678302")
     #show_metadata(["Manufacturer", "ManufacturerModelName", "SliceThickness"])
     #show_metadata(["XRayTubeCurrent"])
     #show_metadata(["ContrastBolusAgent", "ContrastBolusTotalDose"])
-    ct_ldct()
+    ct_dic = ct_ldct(return_pids=True)
+    print(ct_dic)

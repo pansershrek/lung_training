@@ -124,7 +124,7 @@ def copy_paste_3D(img_1, bbox_1, img_2, bbox_2, target_input_shape, also_crop_bb
 
 
 def dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape=(128,128,128), save=False, device="cpu",
-                            excel_path=EXTRA_FP_EXCEL_PATH, make_5mm=False, make_2d5mm=False, n_copy=3):
+                            excel_path=EXTRA_FP_EXCEL_PATH, make_5mm=False, make_2d5mm=False, n_copy=3, save_invalid_pids=True):
     global Tumor, LungDataset
     from dataset import Tumor, LungDataset
     dataset = LungDataset.load(CURRENT_DATASET_PKL_PATH)
@@ -178,7 +178,8 @@ def dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape=
     del tmp
     
     if (1): #快進data
-        pids = pids[23:]
+        pids = pids[:]
+        pids = ["3799182"]
 
     invalid_pids = []
 
@@ -269,7 +270,7 @@ def dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape=
                 if (0):
                     AnimationViewer(out_img, [box[:6] for box in out_bboxes], note=pid, draw_face=False)
                     print("Fake saving to", name)
-    if save:
+    if save_invalid_pids:
         invalid_pids_text = "\n".join(invalid_pids)
         with open("D:/CH/LungDetection/copy_paste_invalid_pids.txt", "w") as f:
             f.write(invalid_pids_text)
@@ -279,12 +280,19 @@ def dataset_preprocessing(target_transform=(1.25,0.75,0.75), target_input_shape=
 
 if __name__ == "__main__":
     device = "cpu"
-    dataset_preprocessing(save=True,   # 5mm
+    dataset_preprocessing(save=True,  # 1.25mm
                             device=device,
-                            make_5mm=True,
+                            make_5mm=False,
                             make_2d5mm=False,
-                            n_copy=3,)
+                            n_copy=3,
+                            save_invalid_pids=False)
+    #dataset_preprocessing(save=True,   # 5mm
+    #                        device=device,
+    #                        make_5mm=True,
+    #                        make_2d5mm=False,
+    #                        n_copy=3,)
 
+    """
     dataset_preprocessing(save=True,  # 2.5mm
                             device=device,
                             make_5mm=False,
@@ -296,3 +304,4 @@ if __name__ == "__main__":
                             make_5mm=False,
                             make_2d5mm=False,
                             n_copy=3,)
+    """

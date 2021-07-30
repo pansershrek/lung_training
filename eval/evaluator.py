@@ -9,6 +9,8 @@ import config.yolov4_config as cfg
 import time
 import torch.nn.functional as F
 import warnings
+from copy import deepcopy
+
 current_milli_time = lambda: int(round(time.time() * 1000))
 class Evaluator(object):
     def __init__(self, model, showatt, pred_result_path, box_top_k, conf_thresh=None):
@@ -113,10 +115,11 @@ class Evaluator(object):
             box_raw_data = []
         else:
             bboxes, box_raw_data = self.__predict(img, self.val_shape, (0, np.inf), shape_before_pad)
-
+        
+        boxes_no_nms = deepcopy(bboxes)
         bboxes, log_txt = nms(bboxes, score_threshold=self.conf_thresh, iou_threshold=self.nms_thresh, box_top_k=self.box_top_k)
 
-        return bboxes, box_raw_data, log_txt
+        return bboxes, box_raw_data, log_txt, boxes_no_nms
 
     def __predict(self, img, test_shape, valid_scale, shape_before_pad=[0,0,0]):
         org_img = img

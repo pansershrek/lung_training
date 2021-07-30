@@ -111,7 +111,7 @@ def interpolate_FROC_data(froc_x, froc_y, max_fps=(8, 4, 2, 1, 0.5, 0.25, 0.125)
         log_txt += f"sens_for_cpm: {sens_for_cpm}\n"
         log_txt += f"CPM: {cpm}"
         print(log_txt)
-        return froc_x, froc_y, log_txt, cpm
+        return froc_x, froc_y, log_txt, cpm, sens_for_cpm
 
 def froc_take_max(froc_x, froc_y):
     froc_x_tmp = []
@@ -126,7 +126,7 @@ def froc_take_max(froc_x, froc_y):
 
 def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, eval_input_size=cfg.VAL["TEST_IMG_SIZE"], 
                     dynamic_input_shape=cfg.VAL["BATCH_1_EVAL"], det_tp_iou_thresh=cfg.VAL["TP_IOU_THRESH"], 
-                    return_fp_bboxes=False, return_froc_only=False, npy_format_already=False):
+                    return_fp_bboxes=False, return_froc_only=False, npy_format_already=False, only_eval_these_pids=None):
     #size_threshold is 20 in thesis
     if type(npy_dir)==str:
         num_npy = os.listdir(npy_dir) # dir is your directory path
@@ -171,6 +171,8 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
         current_pass = 0
         #annotation_file = os.path.join(root, 'annotations/rand_all.txt'
         for pid, boxes in gt_lut.items():
+            if (type(only_eval_these_pids)!=type(None)) and (pid not in only_eval_these_pids):
+                continue
             if not dynamic_input_shape:
                 size = eval_input_size
                 scale = (size[0]/int(line[1]),size[1]/int(line[2]),size[2]/int(line[3]))
@@ -184,7 +186,9 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
                     if os.path.exists(pred_npy):
                         break
                 else:
-                    assert False, "Not existed: {}".format(pred_npy)
+                    # it means in total_FROC function, a specific pid wan't found in all 5 folds
+                    pass
+                    #assert False, "Not existed: {}".format(pred_npy)
  
             if not os.path.exists(pred_npy):
                 continue
@@ -408,13 +412,13 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
     else:
         area_dist = 0.0 #prevent error
         if (1):
-            froc_x_dist, froc_y_dist, sub_log_txt, cpm_dist = interpolate_FROC_data(data[..., 7], data[..., 5], max_fps=(8, 4, 2, 1, 0.5, 0.25 ,0.125))
+            froc_x_dist, froc_y_dist, sub_log_txt, cpm_dist, sens_for_cpm_dist = interpolate_FROC_data(data[..., 7], data[..., 5], max_fps=(8, 4, 2, 1, 0.5, 0.25 ,0.125))
             froc_x_dist, froc_y_dist = froc_take_max(froc_x_dist, froc_y_dist)
             draw_full(froc_x_dist, froc_y_dist, '#FF6D6C', 'Dist', '-', 1, True)
             area_dist = AUC(froc_x_dist, froc_y_dist, normalize=True)
             log_txt += sub_log_txt + "\n"
 
-        froc_x, froc_y, sub_log_txt, cpm = interpolate_FROC_data(data[..., 4], data[..., 2], max_fps=(8, 4, 2, 1, 0.5, 0.25 ,0.125))
+        froc_x, froc_y, sub_log_txt, cpm, sens_for_cpm = interpolate_FROC_data(data[..., 4], data[..., 2], max_fps=(8, 4, 2, 1, 0.5, 0.25 ,0.125))
         log_txt += sub_log_txt + "\n"
         froc_x, froc_y = froc_take_max(froc_x, froc_y)
         #draw_full(froc_x, froc_y, '#FF0000', 'D < 15 mm', '-', 1, True)
@@ -431,7 +435,7 @@ def calculate_FROC(gt_lut, npy_dir, npy_format, size_threshold=0, th_step=0.05, 
     # axes.axis([0, 10, 0.5, 1])
     # axes.set_aspect('auto')
     if return_froc_only:
-        return froc_x_dist, froc_y_dist, area_dist
+        return froc_x_dist, froc_y_dist, cpm_dist, log_txt, sens_for_cpm_dist
 
     plt.xlim(1, 8)
     x_tick = np.arange(0, 10, 2)
@@ -623,13 +627,13 @@ def calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, ori_dataset,
     else:
         area_dist = 0.0 #prevent error
         if (1):
-            froc_x_dist, froc_y_dist, sub_log_txt, cpm_dist = interpolate_FROC_data(data[..., 7], data[..., 5], max_fps=(8, 4, 2, 1, 0.5, 0.25 ,0.125))
+            froc_x_dist, froc_y_dist, sub_log_txt, cpm_dist, sens_for_cpm_dist = interpolate_FROC_data(data[..., 7], data[..., 5], max_fps=(8, 4, 2, 1, 0.5, 0.25 ,0.125))
             froc_x_dist, froc_y_dist = froc_take_max(froc_x_dist, froc_y_dist)
             draw_full(froc_x_dist, froc_y_dist, '#FF6D6C', 'Dist', '-', 1, True)
             area_dist = AUC(froc_x_dist, froc_y_dist, normalize=True)
             log_txt += sub_log_txt + "\n"
 
-        froc_x, froc_y, sub_log_txt, cpm = interpolate_FROC_data(data[..., 4], data[..., 2], max_fps=(8, 4, 2, 1, 0.5, 0.25 ,0.125))
+        froc_x, froc_y, sub_log_txt, cpm, sens_for_cpm = interpolate_FROC_data(data[..., 4], data[..., 2], max_fps=(8, 4, 2, 1, 0.5, 0.25 ,0.125))
         log_txt += sub_log_txt + "\n"
         froc_x, froc_y = froc_take_max(froc_x, froc_y)
         draw_full(froc_x, froc_y, '#FF0000', '', '-', 1, True)
@@ -650,7 +654,7 @@ def calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, ori_dataset,
     plt.xlabel('False Positive Per Pass')
     return area_dist, area_iou, plt, log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou
 
-def plot_total_FROC(froc_data, save=False, save_path="total_froc.png", gt_lut_pkl_path=GT_LUT_PKL_PATH):
+def plot_total_FROC(froc_data, save=False, save_path="total_froc.png", gt_lut_pkl_path=GT_LUT_PKL_PATH, only_eval_these_pids=None, calc_5_fold_differently=False):
     #size_threshold is 20 in thesis
     #assert len(npy_dirs) == len(exp_names), "Should of same length"
 
@@ -666,30 +670,55 @@ def plot_total_FROC(froc_data, save=False, save_path="total_froc.png", gt_lut_pk
     #    pid_folds[fold] = test_data
         
 
-    size_threshold=0
-    th_step=0.05
+    size_threshold=20
+    th_step=0.01 # not 0.05
     eval_input_size=cfg.VAL["TEST_IMG_SIZE"]
     dynamic_input_shape=cfg.VAL["BATCH_1_EVAL"]
     det_tp_iou_thresh=cfg.VAL["TP_IOU_THRESH"]
     data = {}
+    total_log = ""
+    if calc_5_fold_differently:
+        total_sens = {k:0 for k in [8,4,2,1,0.5,0.25,0.125]}
+        total_cpm = 0
     for exp_name, npy_dirs_kfold in froc_data.items():
         npy_dirs = []
         npy_formats = []
-        for npy_dir, epoch in npy_dirs_kfold:
+        for i, (npy_dir, epoch) in enumerate(npy_dirs_kfold):
             npy_dir = "D:/CH/LungDetection/training/preidction/" + npy_dir + f"/{epoch}_conf0.015/evaluate"
             npy_format = npy_dir + "/{}_test.npy"
             npy_dirs.append(npy_dir)
             npy_formats.append(npy_format)
-        froc_x, froc_y, area = calculate_FROC(gt_lut, npy_dirs, npy_formats, size_threshold, th_step, eval_input_size, 
-                                                dynamic_input_shape, det_tp_iou_thresh, return_fp_bboxes=False, 
-                                                return_froc_only=True, npy_format_already=True)
-        data[exp_name] = (froc_x, froc_y, area)
-    plt.close()
+            if calc_5_fold_differently:
+                froc_x, froc_y, cpm_dist, log_txt, sens_for_cpm_dist = calculate_FROC(gt_lut, [npy_dir], [npy_format], size_threshold, th_step, eval_input_size, 
+                                                    dynamic_input_shape, det_tp_iou_thresh, return_fp_bboxes=False, 
+                                                    return_froc_only=True, npy_format_already=True, only_eval_these_pids=only_eval_these_pids)
+                #print("FROC x", froc_x)
+                #print("FROC Y", froc_y)
+                #print("sens for cpm dist", sens_for_cpm_dist)
+                for k in sens_for_cpm_dist:
+                    #print(f"k={k}", type(k))
+                    #print(total_sens.keys())
+                    total_sens[k] += sens_for_cpm_dist[k]
+                total_cpm += cpm_dist
+                total_log += f"Fold {i}, cpm={cpm_dist}, sens_for_cpm={sens_for_cpm_dist}\n"
 
+                
+        if not calc_5_fold_differently:
+            froc_x, froc_y, cpm_dist, log_txt, sens_for_cpm_dist = calculate_FROC(gt_lut, npy_dirs, npy_formats, size_threshold, th_step, eval_input_size, 
+                                                dynamic_input_shape, det_tp_iou_thresh, return_fp_bboxes=False, 
+                                                return_froc_only=True, npy_format_already=True, only_eval_these_pids=only_eval_these_pids)
+        else:
+            sens_for_cpm_dist = {k:v/len(npy_dirs_kfold) for k,v in total_sens.items()}
+            total_cpm /= len(npy_dirs_kfold)
+            total_log += f"\nAverage cpm: {total_cpm}, sens: {sens_for_cpm_dist}\n"
+        data[exp_name] = (froc_x, froc_y, cpm_dist)
+    plt.close()
+    print("total log", total_log)
+    
     plt.figure()
     plt.rc('font',family='Times New Roman', weight='bold')
-    for exp_name, (froc_x, froc_y, area) in data.items():
-        plt.plot(froc_x, froc_y, label=exp_name+', AUC = %.3f'%area, linestyle="-")
+    for exp_name, (froc_x, froc_y, cpm_dist) in data.items():
+        plt.plot(froc_x, froc_y, label=exp_name+', CPM = %.4f'%cpm_dist, linestyle="-")
     x_tick = np.arange(0, 10, 1)
     plt.xticks(x_tick)
     #plt.ylim(0.5, 1)
@@ -707,6 +736,7 @@ def plot_total_FROC(froc_data, save=False, save_path="total_froc.png", gt_lut_pk
     if save:
         plt.savefig(save_path)
     plt.show()
+    return log_txt
     
 
 
@@ -751,27 +781,65 @@ def _parse_args():
 
 
 if __name__ == '__main__':
-    root = 'datasets/abus'
+    #root = 'datasets/abus'
     #get_gt_lut(save=False)
+
+    # currently no use
     froc_data = {
-        "ResNeSt+FPR+iter":[
-            ("train_rc_config_5.9.1_iterative_fp_update_f0_EXTRA_FP_testing", 272),
-            ("train_rc_config_5.9.2_iterative_fp_update_f1_EXTRA_FP_testing", 221),
-            ("train_rc_config_5.9.1_iterative_fp_update_f2_EXTRA_FP_testing", 289),
-            ("train_rc_config_5.9.1_iterative_fp_update_f3_EXTRA_FP_testing", 238),
-            ("train_rc_config_5.9.1_iterative_fp_update_f4_EXTRA_FP_testing", 255),
+        #"CSP-SA-YOLOv4 1.25mm":[
+        #    ("train_rc_config_5.15_attnetion2_layer0_f0_EXTRA_FP_testing", 272),
+        #    ("train_rc_config_5.15_attnetion2_layer0_f1_EXTRA_FP_testing", 170),
+        #    ("train_rc_config_5.15_attnetion2_layer0_f2_EXTRA_FP_testing", 272),
+        #    ("train_rc_config_5.15.2_attnetion2_layer0_f3_EXTRA_FP_testing", 238),
+        #    ("train_rc_config_5.15.2_attnetion2_layer0_f4_EXTRA_FP_testing", 221),
+        #],
+
+        #"CSP-SA-YOLOv4 2.5mm":[
+        #    ("train_rc_config_5.15_attetion2_layer0_for_2d5mm_f0_EXTRA_FP_testing", 170),
+        #    ("train_rc_config_5.15_attetion2_layer0_for_2d5mm_f1_EXTRA_FP_testing", 250),
+        #    ("train_rc_config_5.15_attetion2_layer0_for_2d5mm_f2_EXTRA_FP_testing", 170),
+        #    ("train_rc_config_5.15_attetion2_layer0_for_2d5mm_f3_EXTRA_FP_testing", 119),
+        #    ("train_rc_config_5.15_attetion2_layer0_for_2d5mm_f4_EXTRA_FP_testing", 238),
+        #],
+
+        "CSP-SA-YOLOv4 5.0mm":[
+            ("train_rc_config_5.15_attetion2_layer0_for_5mm_f0_EXTRA_FP_testing", 153),
+            ("train_rc_config_5.15_attetion2_layer0_for_5mm_f1_EXTRA_FP_testing", 136),
+            ("train_rc_config_5.15_attetion2_layer0_for_5mm_f2_EXTRA_FP_testing", 272),
+            ("train_rc_config_5.15_attetion2_layer0_for_5mm_f3_EXTRA_FP_testing", 204),
+            ("train_rc_config_5.15_attetion2_layer0_for_5mm_f4_EXTRA_FP_testing", 238),
         ],
 
-        "ResNeSt":[
-            ("resnest_no_fp_reduction_dry_run_f0_EXTRA_FP_testing", 170),
-            ("resnest_no_fp_reduction_dry_run_f1_EXTRA_FP_testing", 204),
-            ("resnest_no_fp_reduction_dry_run_f2_EXTRA_FP_testing", 187),
-            ("resnest_no_fp_reduction_dry_run_f3_EXTRA_FP_testing", 255),
-            ("resnest_no_fp_reduction_dry_run_f4_EXTRA_FP_testing", 255),       
-        ],
+        #"ResNeSt+FPR+iter":[
+        #    ("train_rc_config_5.9.1_iterative_fp_update_f0_EXTRA_FP_testing", 272),
+        #    ("train_rc_config_5.9.2_iterative_fp_update_f1_EXTRA_FP_testing", 221),
+        #    ("train_rc_config_5.9.1_iterative_fp_update_f2_EXTRA_FP_testing", 289),
+        #    ("train_rc_config_5.9.1_iterative_fp_update_f3_EXTRA_FP_testing", 238),
+        #    ("train_rc_config_5.9.1_iterative_fp_update_f4_EXTRA_FP_testing", 255),
+        #],
+
+        #"ResNeSt":[
+        #    ("resnest_no_fp_reduction_dry_run_f0_EXTRA_FP_testing", 170),
+        #    ("resnest_no_fp_reduction_dry_run_f1_EXTRA_FP_testing", 204),
+        #    ("resnest_no_fp_reduction_dry_run_f2_EXTRA_FP_testing", 187),
+        #    ("resnest_no_fp_reduction_dry_run_f3_EXTRA_FP_testing", 255),
+        #    ("resnest_no_fp_reduction_dry_run_f4_EXTRA_FP_testing", 255),       
+        #],
         
     }
-    plot_total_FROC(froc_data, save=True, save_path="D:/CH/total_froc.png", gt_lut_pkl_path=GT_LUT_PKL_PATH)
+    from view_dataset import ct_ldct
+    #ldct_dic = {"CT":None, "LDCT":None}
+    ldct_dic = ct_ldct(return_pids=True) #672 CT, 94 LDCT
+    #print(ldct_dic["LDCT"][:10])
+    #1/0
+    print("1034114" in ldct_dic["CT"], "13564970" in ldct_dic["CT"])
+
+    calc_5_fold_differently = False
+    log_txt = plot_total_FROC(froc_data, save=True, save_path="D:/CH/total_froc_CT.png", gt_lut_pkl_path=GT_LUT_PKL_PATH, only_eval_these_pids=ldct_dic["CT"], calc_5_fold_differently=calc_5_fold_differently)
+    #log_txt = plot_total_FROC(froc_data, save=True, save_path="D:/CH/total_froc_LDCT.png", gt_lut_pkl_path=GT_LUT_PKL_PATH, only_eval_these_pids=ldct_dic["LDCT"], calc_5_fold_differently=calc_5_fold_differently)
+    print()
+    #print("LOG TXT")
+    #print(log_txt)
 
     #npy_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'results/prediction/')
     #npy_format = npy_dir + '{}'

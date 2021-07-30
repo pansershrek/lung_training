@@ -46,6 +46,9 @@ if __name__ == "__main__":
     parser.add_argument('--npy_name', type=str, default=None) #default="hu+norm_256x256x256_fp16.npy")
     parser.add_argument('--testing_mode', type=int, default=0)
     parser.add_argument('--update_fp_first', action='store_true',default=False,  help='whether update iterative fp crops firstly')
+    parser.add_argument('--debug_train', action='store_true',default=False,  help='run debug_train instead of train')
+    parser.add_argument('--avoid_first_time_update_fp', action='store_true', default=False,  help='update fp crops at first fp_reduction epoch or not')
+   
 
     opt = parser.parse_args()
     writer = SummaryWriter(log_dir=opt.log_path + '/' + opt.exp_name)
@@ -56,13 +59,20 @@ if __name__ == "__main__":
 
     weight_path = opt.weight_path
     resume = opt.resume
+    first_time_update_fp = not opt.avoid_first_time_update_fp
 
     if (0):
         warnings.warn("Override opt settings in train3D.py!!!")
-        weight_path = r"checkpoint/train_5mm_max_no_fp_reduction_dry_run_f0/backup_epoch0.pt"
+        #weight_path = r"checkpoint/train_5mm_max_no_fp_reduction_dry_run_f0/backup_epoch0.pt"
+        #resume = True
+        weight_path = r"D:\CH\LungDetection\training\checkpoint\train_rc_config_5.12_group+iter+cp_f1\backup_epoch179_tmp_save.pt"
         resume = True
-        opt.crx_valid = 0
-        opt.eval_interval = 100
+        opt.crx_valid = 1
+        #opt.eval_interval = 100
+        #opt.exp_name = "_train_debug"
+        opt.exp_name = "train_rc_config_5.12_group+iter+cp_f1"
+        opt.debug_train = False
+        first_time_update_fp = True
         #opt.exp_name = "train_rc_config_2_f0_fp_reduction_0,1"
         writer = SummaryWriter(log_dir=opt.log_path + '/' + opt.exp_name)
         logger = Logger(log_file_name=opt.log_path + '/' + opt.exp_name + '/log.txt', log_level=logging.DEBUG, logger_name='YOLOv4').get_log()
@@ -86,7 +96,12 @@ if __name__ == "__main__":
             dataset_name=opt.dataset_name,
             eval_interval=opt.eval_interval,
             npy_name=opt.npy_name,
+            first_time_update_fp = first_time_update_fp,
             )
     if opt.update_fp_first:
         trainer.iterative_update_fp_crops()
-    trainer.train()
+
+    if opt.debug_train:
+        trainer._debug_train()
+    else:
+        trainer.train()

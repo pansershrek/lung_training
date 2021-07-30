@@ -45,7 +45,7 @@ if __name__ == "__main__":
     parser.add_argument('--npy_name', type=str, default="hu+norm_256x256x256_fp16.npy")
     opt = parser.parse_args()
 
-
+    eval_store_raw_bbox = False
     for exp_name, fold_num, eval_epochs in [
         
         #('train_rc_config_5.9.1_iterative_fp_update_f0', 0, 272),
@@ -53,11 +53,14 @@ if __name__ == "__main__":
         #('train_rc_config_5.9.1_iterative_fp_update_f3', 3, 238),
         #3,0 resume, 1 retrain
 
-        #('train_rc_config_5.11_csp+group_iterative_fp_update_f0', 0, 238),
-        #('train_rc_config_5.11_csp+group_iterative_fp_update_f1', 1, 300),
-        #('train_rc_config_5.11_csp+group_iterative_fp_update_f2', 2, 300),
-        ('train_rc_config_5.11.2_csp+group_iterative_fp_update_f3', 3, 300),
-        #('train_rc_config_5.11_csp+group_iterative_fp_update_f4', 4, 255),
+        
+        ('train_rc_config_Darknet+stage0_iterfpr_f0', 0, 170),
+        ('train_rc_config_Darknet+stage0_iterfpr_f1', 1, 170),
+        ('train_rc_config_Darknet+stage0_iterfpr_f2', 2, 238),
+        ('train_rc_config_Darknet+stage0_iterfpr_f3', 3, 221),
+        ('train_rc_config_Darknet+stage0_iterfpr_f4', 4, 204),
+        
+        
 
 
         #1.25mm best
@@ -144,6 +147,7 @@ if __name__ == "__main__":
                                 eval_interval=None,
                                 npy_name=opt.npy_name,
                                 eval_conf_thresh=eval_conf_thresh,
+                                eval_store_raw_bbox=eval_store_raw_bbox,
                                 )
 
                         area_dist, area_iou, plt, _, cpm_dist, cpm, max_sens_dist, max_sens_iou = trainer.evaluate()

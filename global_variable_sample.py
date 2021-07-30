@@ -7,9 +7,10 @@ NPY_SAVED_PATH = r"E:/LungData/Preprocessed"
 MASK_SAVED_PATH = r"E:/LungData/AutoMask"
 LUNG_DATASET_PKL_PATH = r"D:/CH/LungDetection/training/lung_dataset_20210118.pkl"  # mostly lung_dataset_20210118.pkl
 NEGATIVE_NPY_SAVED_PATH = r"E:/LungData/NegativeSamples"
+GT_LUT_PKL_PATH = r"D:/CH/LungDetection/gt_lut_1.25x0.75x0.75.pkl"
 
 EXTRA_FP_EXCEL_PATH = r"D:/CH/LungDetection/not_fp_1.25mm.xlsx"
-ITERATIVE_FP_CROP_PATH = r"E:/LungData/iterative_fp_tmp"
+ITERATIVE_FP_CROP_PATH = r"E:/LungData/iterative_fp_crops_tmp"
 
 #REPEATABLE_SERIES = () #MRI資料中，可允許重複出現的series種類
 

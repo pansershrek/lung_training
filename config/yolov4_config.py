@@ -116,21 +116,21 @@ TRAIN = {
          "TRAIN_IMG_SIZE": (128,128,128), #(128, 128, 128), (16,128,128) (32,128,128), 5MM
          #"AUGMENT": True,
          #for 640
-         "BATCH_SIZE": 8, # *8
+         "BATCH_SIZE": 8, # *8, 16
          #for 96
          #"BATCH_SIZE": 4,
          "MULTI_SCALE_TRAIN": False,
          "IOU_THRESHOLD_LOSS": 0.5, # *0.5, 0.02
          #for 640
          "YOLO_EPOCHS": 300, #8: 425, 500, 800, *300
-         "EARLY_STOPPING_EPOCH": None, # None or int (200)
+         "EARLY_STOPPING_EPOCH": 250, # None or int 200
          #for 96
          #"YOLO_EPOCHS": 100,
          #"Mobilenet_YOLO_EPOCHS": 120,
          "OPTIMIZER": "SGD", # SGD / ADAM / ADABELIEF
          "USE_SGD_BEFORE_LOSS_LOWER_THAN_THRESH": False,
          "CHANGE_OPTIMIZER_THRESH": 50,
-         "NUMBER_WORKERS": 0,  # *6, 0 # for resnest, workers==0 runs faster
+         "NUMBER_WORKERS": 4,  # *6, 0, 4 # for resnest, workers==0 runs faster
          "MOMENTUM": 0.9,
          "WEIGHT_DECAY": 0.0001, # *0.0005
          "LR_INIT": 5e-5 , #SGD: 1e-4, *5e-5, 5e-6               #ADAM:
@@ -145,23 +145,37 @@ TRAIN = {
          "USE_5MM": False, # 5MM
          "USE_2.5MM": False, # 2.5MM (Either 5/2.5mm is ok, but not both at the same time)
          "ESTIMATE_5MM_ANCHOR": False, # if True, use ANCHORS_ORI to estimate ANCHORS_5MM rather than using ANCHORS_5MM directly
-
+        
+        #####
          "DO_FP_REDUCTION": True,
-         "FP_REDUCTION_CROP_PREFIX": "another_data_128x128x128_1.25x0.75x0.75", #"false_positive", #"false_positive_fake_1.25_from_5mm_max", # 5MM 
+         #"FP_REDUCTION_CROP_PREFIX": "another_data_128x128x128_1.25x0.75x0.75", #"false_positive", #"false_positive_fake_1.25_from_5mm_max", # 5MM 
          "FP_REDUCTION_CROP_NCOPY": 5, # 3 for original 1.25mm, and 5 for others
          #"FP_REDUCTION_TARGET_DATASET": "training", #WIP
-         "FP_REDUCTION_START_EPOCH": 100,  # *150, 2, *100
+         #"FP_REDUCTION_START_EPOCH": 150,  # *150, 2, *100
          "FP_REDUCTION_INTERVAL": 1, # *1
          "FP_REDUCTION_MODE": "0,1", # 0,0 | *0,1 | 1,0 | 1,1 (cls_index, mix)
          "FP_REDUCTION_USE_ZERO_CONF": False, # whether to set conf in __create_label to 0 for fp; *False
-
+         
          "EXTRA_FP_USAGE": "eval_only", # "eval_only"/None  # whether to consider extra tp/fp during testing
          "CHANGE_FP_REDUCTION_FOLDER_ROOT": True, # if True, set NPY_SAVED_PATH as root folder (used mainly for "another_data"), else NEGATIVE_NPY_SAVED_PATH
-         "ITERATIVE_FP_UPDATE": True, # whether update fp crops every 10000 steps
-         "ITERATIVE_FP_UPDATE_START_EPOCH": 200, # *200
+         #####
+         "ITERATIVE_FP_UPDATE": True, # whether update fp crops every 2000 steps
+         "ITERATIVE_FP_UPDATE_START_EPOCH": 200, # *200 (6/11 update: normally == FP_REDUCTION_START_EPOCH)
+        
+         "HORIZONTAL_FLIP_RATE": 0.5, # 0.3, 0.5. *0.0 prob to flip crops horizontally during training (only be appllied for random_crops dataset)
+         
+         "USE_EXTRA_ANNOTATION": True, # whether to use another data
+         "EXTRA_ANNOTATION_CROP_PREFIX": "another_data_128x128x128_1.25x0.75x0.75",
+         "EXTRA_ANNOTATION_NCOPY": 5,
+         "USE_EXTRA_ANNOTATION_START_EPOCH": 100, 
 
-         "HORIZONTAL_FLIP_RATE": 0.5, # 0.5. *0.0 prob to flip crops horizontally during training (only be appllied for random_crops dataset)
-
+         "USE_COPY_PASTE": False, # if True, then USE_EXTRA_ANNOTATION should also be True (not useful)
+         "COPY_PASTE_EXCLUDE_PIDS_TXT": "D:/CH/LungDetection/copy_paste_invalid_pids.txt",
+         "COPY_PASTE_CROP_PREFIX": "copy_paste_128x128x128_1.25x0.75x0.75",
+         "COPY_PASTE_NCOPY": 3,
+        
+         "DO_HARD_NEGATIVE_MINING": False,
+         "HARD_NEGATIVE_MINING_START_EPOCH": 150,
 
          # 2021/3/4 v1: (目前 "0,1" + No_use_zero_conf + "try fp reduction loss" 表現最好)
          # 2021/3/6: "0,1" + use_zero_conf has similar(same) performance as 2021/3/4
@@ -238,7 +252,7 @@ MODEL = {#"ANCHORS":[[(1.25, 1.625), (2.0, 3.75), (4.125, 2.875)],  # Anchors fo
          "ANCHORS_PER_SCLAE":3,
 
          ## General params
-         "BACKBONE": "ResNeSt", # ResNeSt | CSPDarknet | SCResNeSt
+         "BACKBONE": "CSPDarknet", # ResNeSt | CSPDarknet | SCResNeSt
          "STRIDES":[4,8,16], # [4,8,16] for CSPDarknet; [4,8,16] for resnest # the last elements should == base_multiple
          "BASE_MULTIPLE":16, # == 2 ^ (#_stages in CSPDarknet)
          "USE_SACONV": False, ## RESNEST finished, CSPDarknet not implemented yet (i.e. no usage)
@@ -246,7 +260,7 @@ MODEL = {#"ANCHORS":[[(1.25, 1.625), (2.0, 3.75), (4.125, 2.875)],  # Anchors fo
 
          ## CSPDarknet related parameters
          "CSPDARKNET53_STEM_CHANNELS": 4, 
-         "CSPDARKNET53_FEATURE_CHANNELS": [8,16,32,64] ,  #length of this should == (#_stages in CSPDarknet)
+         "CSPDARKNET53_FEATURE_CHANNELS": [8,16,32,64] ,  #length of this should == (#_stages in CSPDarknet) # (8,16,32,64) or (16,24,64,128)
          "CSPDARKNET53_BLOCKS_PER_STAGE": [3,3,3] , #length of this should == (#_stages in CSPDarknet) - 1
          "VERBOSE_SHAPE": False,
 
@@ -259,6 +273,10 @@ MODEL = {#"ANCHORS":[[(1.25, 1.625), (2.0, 3.75), (4.125, 2.875)],  # Anchors fo
          "RESNEST_EXTRA_ATTENTION": None, #"SEnetConv", #attention type:SEnet, SEnetConv, CBAM or NONE
          "RESNEST_GROUPS": 2, # default: 1
          "RESNEST_USE_CSP": True, # default: False
+
+         ## ADDITONAL
+          "YOLO_USE_LAYER0": True, # whether to add skip connection, allowing layer0 feature bypass the neck
+          "MIXLAYER0NET_MODE": "attention2", # concat/attention1/*attention2/concat2
          }
 
 def _check():
@@ -305,9 +323,14 @@ UPDATE_NOTE:
 13. Try SCNet (self calibration network at CVPR 2020) + ResNeST (SCResNeSt) + SE block (inference time?) (similar result or even poorer)
 14. Try fake 1.25mm from 2.5mm (ResNest, no attention)
 15. Another TP/FP data (different_fp_data is loaded )
-16. Iterative FP-update during fp-reduction
-17. Try shallower model (1,1,1,1) Resnest
+16. Iterative FP-update during fp-reduction (Good)
+17. Try shallower model (1,1,1,1) Resnest (no big difference)
+18. copy paste (not useful, -2%)
+19. try add hard negative mining (OHEM is bad, -2%)
+20. try skip connection layer0 (concat mode is bad)
+21. try skip connection layer0 attention2
+
 
 WHAT'S NEW:
-** Try shallower model (1,1,1,1) Resnest
+** try skip connection layer0
 """

@@ -340,6 +340,7 @@ def plot_roc_multiclass(y_true_tuples, y_pred_tuples, desc="", save_path="plots"
     return tuple(roc_aucs)
 
 def plot_one_curve(x=None, y=None, prefix="", desc="", save_path="plots", save_plot=True, xlabel="epoch", ylabel="value", clean=True, legend_label=None, legend_loc="lower right", ylim=None):
+    csfont = {'fontname':'Times New Roman'}
     if y==None:
         raise TypeError("You should at least give argument 'y'")
     elif x==None:
@@ -351,9 +352,9 @@ def plot_one_curve(x=None, y=None, prefix="", desc="", save_path="plots", save_p
             plt.plot(x,[y_sub[i] for y_sub in y], lw=2, label=legend_label[i])
     else:
         plt.plot(x, y, lw=2, label=legend_label)
-    plt.title(prefix+" "+desc)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
+    plt.title(prefix+" "+desc, **csfont)
+    plt.xlabel(xlabel, **csfont)
+    plt.ylabel(ylabel, **csfont)
     plt.ylim(ylim)
     if legend_label!=None:
         plt.legend(loc=legend_loc)
@@ -680,8 +681,89 @@ def _test_put():
     print("-"*30)
     print(resized)
 
-    
+def plot_froc_performance(save=False, save_path=None, save_name="froc performance.png", plot_8to1=False, cpm_leg=True):
+    """
+    settings: {'setting name': {'x':..., 'y':..., 'cpm':...}, ...}
+    """
+    global matplotlib, font_manager, FixedFormatter
+    import matplotlib
+    import matplotlib.font_manager as font_manager
+    #from matplotlib.ticker import FixedFormatter
+    general_x = [8,4,2,1,0.5,0.25,0.125]
+
+    # full
+    settings = {
+        "CSP block (YOLOv4)":{"x":general_x , "y":[0.841,0.795,0.704,0.588,0.458,0.325,0.211] , "CPM":0.560},
+        "CSP block + self-FPR":{"x":general_x , "y":[0.873,0.826,0.778,0.706,0.622,0.499,0.384] , "CPM":0.670},
+        "SA block (YOLOv4)":{"x":general_x , "y":[0.909,0.858,0.792,0.674,0.539,0.397,0.269] , "CPM":0.634},
+        "SA block + self-FPR":{"x":general_x , "y":[0.915,0.882,0.844,0.789,0.716,0.610,0.475] , "CPM":0.747},
+        "SA block + iterative self-FPR":{"x":general_x , "y":[0.920,0.898,0.860,0.807,0.737,0.667,0.579] , "CPM":0.7803},
+        "CSP-SA block + iterative self-FPR":{"x":general_x , "y":[0.918,0.887,0.849,0.800,0.752,0.685,0.576] , "CPM":0.7810},
+        "CSP-SA block + iterative self-FPR + SSR":{"x":general_x , "y":[0.8958,0.8896,0.8729,0.8333,0.7872,0.7221,0.6385] , "CPM":0.8057},
+    }
+
+
+    ## brucetu
+    plt.figure(figsize=(14.0/2.54, 10.5*1.1/2.54))
+    font = {'family': 'Times New Roman',
+            'size': 12}
+    plt.rc('font', **font)
+
+
+    csfont = {'fontname':'Times New Roman'}
+    ax = plt.gca()
+    #plt.xlabel("Average Number of False Positive per Scan", fontsize=14, weight="bold", **csfont)
+    #plt.ylabel("Sensitivity", fontsize=14, weight="bold", **csfont)
+    #plt.title("FROC Performance", fontsize=16, weight="bold", **csfont)
+    plt.xlabel("Average Number of False Positive per Scan")
+    plt.ylabel("Sensitivity")
+    if plot_8to1:
+        plt.title("Detection Sensitivity at the Pre-defined FP Values")
+    else:
+        plt.title("FROC Performance")
+    plt.xscale('log', base=2)
+    leg_font = font_manager.FontProperties(family='Times New Roman',
+                                            weight=None, # None or "bold" or "italic"
+                                            style='italic', # "normal" or "italic"
+                                            size=10)
+
+    for name, data in settings.items():
+        x, y, cpm = data["x"], data["y"], data["CPM"]
+        assert len(x)==len(y), "x has length {} while y has length {} in setting '{}'".format(len(x), len(y), name)
+        assert sum(y)/len(y) - cpm < 0.02, "suspicious cpm={} in setting '{}'".format(cpm, name)
+        if plot_8to1:
+            x = x[:4]
+            y = y[:4]
+            plt.plot(x,y, label=name, lw=2)
+        else:
+            if cpm_leg:
+                name = name+'; CPM=%.3f' % cpm
+            plt.plot(x,y, label=name, lw=2)
+
+    plt.legend(loc='lower right', prop=leg_font)
+    if plot_8to1:
+        general_x = general_x[:4]
+    plt.xticks(general_x)
+    plt.xticks(general_x, labels=[str(x) for x in general_x], fontsize=12, **csfont)  
+    plt.yticks(np.arange(0, 1+0.1, 0.1), fontsize=12, **csfont)
+    #plt.ylim(bottom=0, top=1)
+    #ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
+    #plt.ticklabel_format(style='plain', axis='x')
+    if save:
+        assert type(save_path)==str
+        assert type(save_name)==str
+        if not os.path.exists(save_path):
+            os.makedirs(save_path, exist_ok=True)
+        plt.savefig(os.path.join(save_path, save_name))
+    else:
+        plt.show()
+
+
+
 if __name__ == "__main__":
     #_test_put()
-    _test_mean_statistics()
+    #_test_mean_statistics()
+    #plot_froc_performance()
+    #plot_froc_performance(True, r"D:/CH/LungDetection/exp imgs", "froc performance 8to1.png", plot_8to1=True)
+    plot_froc_performance(True, r"D:/CH/LungDetection/exp imgs", "froc performance.png", cpm_leg=False)
 

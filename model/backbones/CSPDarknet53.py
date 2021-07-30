@@ -255,7 +255,11 @@ class CSPDarknet53(nn.Module):
             #print("stage {}: {} -> {}".format(i, x_ori_shape, x.shape))
             features.append(x)
 
-        return features[-self.num_features:]
+        if (1):
+            return features[-4:]
+        else: #original
+            return features[-self.num_features:]
+
 
     def _initialize_weights(self):
         print("**" * 10, "Initing CSPDarknet53 weights", "**" * 10)
