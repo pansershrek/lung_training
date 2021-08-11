@@ -54,11 +54,11 @@ if __name__ == "__main__":
         #3,0 resume, 1 retrain
 
         
-        ('train_rc_config_Darknet+stage0_iterfpr_f0', 0, 170),
-        ('train_rc_config_Darknet+stage0_iterfpr_f1', 1, 170),
-        ('train_rc_config_Darknet+stage0_iterfpr_f2', 2, 238),
-        ('train_rc_config_Darknet+stage0_iterfpr_f3', 3, 221),
-        ('train_rc_config_Darknet+stage0_iterfpr_f4', 4, 204),
+        ('train_rc_config_Darknet+SSR_no_fpr_f0', 0, 68),
+        ('train_rc_config_Darknet+SSR_no_fpr_f1', 1, 119),
+        ('train_rc_config_Darknet+SSR_no_fpr_f2', 2, 85),
+        ('train_rc_config_Darknet+SSR_no_fpr_f3', 3, 187),
+        ('train_rc_config_Darknet+SSR_no_fpr_f4', 4, 102),
         
         
 

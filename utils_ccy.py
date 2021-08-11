@@ -694,6 +694,7 @@ def plot_froc_performance(save=False, save_path=None, save_name="froc performanc
     # full
     settings = {
         "CSP block (YOLOv4)":{"x":general_x , "y":[0.841,0.795,0.704,0.588,0.458,0.325,0.211] , "CPM":0.560},
+        "CSP block + SSR":{"x":general_x , "y":[0.8743, 0.8414, 0.7775, 0.6743, 0.5658, 0.4162, 0.2944] , "CPM":0.6348},
         "CSP block + self-FPR":{"x":general_x , "y":[0.873,0.826,0.778,0.706,0.622,0.499,0.384] , "CPM":0.670},
         "SA block (YOLOv4)":{"x":general_x , "y":[0.909,0.858,0.792,0.674,0.539,0.397,0.269] , "CPM":0.634},
         "SA block + self-FPR":{"x":general_x , "y":[0.915,0.882,0.844,0.789,0.716,0.610,0.475] , "CPM":0.747},
@@ -704,7 +705,7 @@ def plot_froc_performance(save=False, save_path=None, save_name="froc performanc
 
 
     ## brucetu
-    plt.figure(figsize=(14.0/2.54, 10.5*1.1/2.54))
+    plt.figure(figsize=(14.0/2.54, 12*1.1/2.54))
     font = {'family': 'Times New Roman',
             'size': 12}
     plt.rc('font', **font)

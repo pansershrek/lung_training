@@ -147,7 +147,7 @@ TRAIN = {
          "ESTIMATE_5MM_ANCHOR": False, # if True, use ANCHORS_ORI to estimate ANCHORS_5MM rather than using ANCHORS_5MM directly
         
         #####
-         "DO_FP_REDUCTION": True,
+         "DO_FP_REDUCTION": False,
          #"FP_REDUCTION_CROP_PREFIX": "another_data_128x128x128_1.25x0.75x0.75", #"false_positive", #"false_positive_fake_1.25_from_5mm_max", # 5MM 
          "FP_REDUCTION_CROP_NCOPY": 5, # 3 for original 1.25mm, and 5 for others
          #"FP_REDUCTION_TARGET_DATASET": "training", #WIP
@@ -159,7 +159,7 @@ TRAIN = {
          "EXTRA_FP_USAGE": "eval_only", # "eval_only"/None  # whether to consider extra tp/fp during testing
          "CHANGE_FP_REDUCTION_FOLDER_ROOT": True, # if True, set NPY_SAVED_PATH as root folder (used mainly for "another_data"), else NEGATIVE_NPY_SAVED_PATH
          #####
-         "ITERATIVE_FP_UPDATE": True, # whether update fp crops every 2000 steps
+         "ITERATIVE_FP_UPDATE": False, # whether update fp crops every 2000 steps
          "ITERATIVE_FP_UPDATE_START_EPOCH": 200, # *200 (6/11 update: normally == FP_REDUCTION_START_EPOCH)
         
          "HORIZONTAL_FLIP_RATE": 0.5, # 0.3, 0.5. *0.0 prob to flip crops horizontally during training (only be appllied for random_crops dataset)
@@ -174,7 +174,7 @@ TRAIN = {
          "COPY_PASTE_CROP_PREFIX": "copy_paste_128x128x128_1.25x0.75x0.75",
          "COPY_PASTE_NCOPY": 3,
         
-         "DO_HARD_NEGATIVE_MINING": False,
+         "DO_HARD_NEGATIVE_MINING": False, #OHEM
          "HARD_NEGATIVE_MINING_START_EPOCH": 150,
 
          # 2021/3/4 v1: (目前 "0,1" + No_use_zero_conf + "try fp reduction loss" 表現最好)
@@ -196,7 +196,7 @@ VAL = {
         "CONF_THRESH": 0.015, #0.005, 0.01, *0.015, 0.03, 0.05, 0.1, 0.15  # score_thresh in utils.tools.nms (discard bbox < thresh)
         "NMS_THRESH": 0.15, #0.15, *0.3, 0.45 # iou_thresh in utils.tools.nms (if two bbox has iou > thresh, discard one of them)
         "BOX_TOP_K": 512, # highest number of bbox after nms # *256, 512
-        "TP_IOU_THRESH": 0.15, # iou threshold to view a predicted bbox as TP # *0.15, 0.3
+        "TP_IOU_THRESH": 0.3, # iou threshold to view a predicted bbox as TP # 0.15, 0.3
         "NODULE_RANKING_STRATEGY": "conf_only", # conf_only|conf+class (not much difference in cpm)
 
         "BATCH_SIZE": 1, # 1 or 8
@@ -260,7 +260,7 @@ MODEL = {#"ANCHORS":[[(1.25, 1.625), (2.0, 3.75), (4.125, 2.875)],  # Anchors fo
 
          ## CSPDarknet related parameters
          "CSPDARKNET53_STEM_CHANNELS": 4, 
-         "CSPDARKNET53_FEATURE_CHANNELS": [8,16,32,64] ,  #length of this should == (#_stages in CSPDarknet) # (8,16,32,64) or (16,24,64,128)
+         "CSPDARKNET53_FEATURE_CHANNELS": [16,24,64,128] ,  #length of this should == (#_stages in CSPDarknet) # (16,24,64,128)
          "CSPDARKNET53_BLOCKS_PER_STAGE": [3,3,3] , #length of this should == (#_stages in CSPDarknet) - 1
          "VERBOSE_SHAPE": False,
 
@@ -304,33 +304,3 @@ def modify():
 
 _check()
 modify()
-
-"""
-UPDATE_NOTE:
-1. WIP: add gradient for bbox with label=0 (change loss_conf in yolo_loss.py)
-2. Add FP reduction by using the pre-cropped negative sample pool (config 4) (both fp_dataset_0_conf and online hardmining seems not good (v1))
-3. Try calculate loss_conf using [ only top k hard negative pred bbox/grid and all pos bbox/grid ] (very bad if use zero_conf + cls==1, but ok if use zero_conf + cls==0)
-4. Try ResNeSt (config 5)
-5. Try SAConv with ResNeSt (replace all 3x3x3 conv3d to SAConv3d) (Super unstable, and not so good)
-6. Try max/mean 5mm slice thickness data (using new dataset file and anchor boxes)
-7. Try first version of 5mm image training with fp reduction (stack_func=max), "5_mm_max_config_1" (sens=0.5,0.4 around fp=4,2)
-8. Try estimate 5mm anchors using ori_anchors; "train_5mm_max_config_1.2_estimated_anchor"
-9. Try run testing on fake_1.25mm(interpolated from 5mm) with model trained from true 1.255_mm crops.
-10. Try 5mm mean training (exclude 5mm不清楚+5mm看不到) (worse than max, even exlude both data)
-11. Try fake 1.25 mm crops training + fake 1.25 mm testing, generated from 5mm max data (set TRAIN['use_5mm']=True, VAL['FAST_EVAL_PKL_NAME']!=False)
-12. Try SE-block in resnest (original 1.25mm) (config 5.7) [SE-Conv/SEnet cause OOM in testing] (edit: may try lower reduction parameter in SE layer!!)
-13-pre: Try "NODULE_RANKING_STRATEGY": "conf+class", and it has higher cpm (but for consistency, the following experiment will use normal strategy if not otherwise stated)
-13. Try SCNet (self calibration network at CVPR 2020) + ResNeST (SCResNeSt) + SE block (inference time?) (similar result or even poorer)
-14. Try fake 1.25mm from 2.5mm (ResNest, no attention)
-15. Another TP/FP data (different_fp_data is loaded )
-16. Iterative FP-update during fp-reduction (Good)
-17. Try shallower model (1,1,1,1) Resnest (no big difference)
-18. copy paste (not useful, -2%)
-19. try add hard negative mining (OHEM is bad, -2%)
-20. try skip connection layer0 (concat mode is bad)
-21. try skip connection layer0 attention2
-
-
-WHAT'S NEW:
-** try skip connection layer0
-"""

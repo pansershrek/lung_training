@@ -348,7 +348,7 @@ class YOLOv4(nn.Module):
             if cfg.MODEL["BACKBONE"] == "CSPDarknet":
                 # CSPDarknet53 backbone
                 self.backbone, feature_channels = _BuildCSPDarknet53(in_channel=cfg.MODEL_INPUT_CHANNEL, weight_path=weight_path, resume=resume, dims=dims)
-                layer0_channel_nC = 8 # resnest
+                layer0_channel_nC = 16 # resnest
             elif cfg.MODEL["BACKBONE"] == "ResNeSt":
                 # ccy: the load weight feature had been handled in trainer.py, so you don't need to care about it here
                 self.backbone, feature_channels = _BuildResNeSt3D(in_channel=cfg.MODEL_INPUT_CHANNEL, used_for_yolo=True, bottleneck_expansion=4) 

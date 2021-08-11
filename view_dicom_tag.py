@@ -2,6 +2,7 @@ from collections import OrderedDict
 import matplotlib.pyplot as plt
 import pandas as pd
 import re
+from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 import os
 import pydicom
@@ -236,7 +237,7 @@ def get_sex(dataset_path, excel_path): # 1M 2F
     #print("min", min(counts, key=lambda k: counts[k]))
     #print("max", max(counts, key=lambda k: counts[k]))
 
-def get_nodule_stats(dataset_path, view_img=False):
+def get_nodule_stats(dataset_path, view_img=False, only_pids=None):
     dataset = LungDataset.load(dataset_path)
     pids = list(set(dataset.pids))
     dataset.get_data(pids)
@@ -245,6 +246,8 @@ def get_nodule_stats(dataset_path, view_img=False):
     sizes = []
     # part 1
     for npy_name, bboxs_ori, pid in dataset.data:
+        if type(only_pids)!=type(None) and pid not in only_pids:
+            continue
         tumor = dataset.tumors[dataset.pid_to_excel_r_relation[pid][0]]
         original_shape = tumor.original_shape
         ori_spacing = tumor.dcm_reader.transform
@@ -294,7 +297,10 @@ def get_nodule_stats(dataset_path, view_img=False):
     # part 2
     sizes2 = []
     df = pd.read_excel(EXTRA_FP_EXCEL_PATH, sheet_name="Sheet1", converters={'pid':str,'bbox':str, 'isFP':int})
-    bboxes = [eval(lst) for lst in df[df["isFP"]==0]["bbox"]]
+    if type(only_pids)!=type(None):
+        bboxes = [eval(lst) for lst in df[(df["isFP"]==0) & df["pid"].isin(only_pids)]["bbox"]]
+    else:
+        bboxes = [eval(lst) for lst in df[df["isFP"]==0]["bbox"]]
     for bbox in bboxes:
         z1, y1, x1, z2, y2, x2 = bbox
         size = ((z2-z1)*1.25 + (y2-y1)*0.75 + (x2-x1)*0.75)/3
@@ -315,7 +321,7 @@ def get_nodule_stats(dataset_path, view_img=False):
 
     #plt.rcParams["font.family"] = 'Times New Roman'
     csfont = {'fontname':'Times New Roman'}
-    print("nodule counts:", len(size_total))
+    print("nodule counts: {} ({}+{})".format(len(size_total), len(sizes), len(sizes2)))
     print("avg size of ori data", sum(sizes)/len(sizes))
     print("avg size of extra data", sum(sizes2)/len(sizes2))
     print("avg size of all data", sum(size_total)/len(size_total))
@@ -419,15 +425,71 @@ def get_nodule_size2(dataset_path, excel_path):
     plt.title("Nodule Size Distribution")
     plt.show()
 
+def nodule_brightness(dataset_path=CURRENT_DATASET_PKL_PATH, crop_prefix="random_crop_128x128x128_1.25x0.75x0.75", ncopy=20, filter_brightness=None, only_pids=None):
+    dataset = LungDataset.load(dataset_path)
+    if type(only_pids)!=type(None):
+        dataset.get_data(only_pids)
+    else:
+        dataset.get_data(dataset.pids)
+    dataset.set_random_crop(crop_prefix, ncopy, False)
+    means = 0
+    medians = 0
+    n_nodule = 0
+    for img, bboxes, pid in tqdm(dataset, total=len(dataset)):
+        if type(only_pids)!=type(None) and pid not in only_pids:
+            raise TypeError("Bad pid {}".format(pid))
+            continue
+        #print("img.shape", img.shape)
+        #print("bbox shape", bbox.shape)
+        img = img.squeeze(-1).numpy() # np.ndarray (128,128,128)
+        bboxes = bboxes[:,:6] # np.ndarray (#box, 6)
+        #utils_hsz.AnimationViewer(img, bboxes, note=pid)
+        for i, bbox in enumerate(bboxes):
+            z1,y1,x1,z2,y2,x2 = list(map(int, bbox))
+            #print(*[(ele, type(ele)) for ele in bbox])
+            nodule = img[z1:z2+1, y1:y2+1, x1:x2+1]
+            if type(filter_brightness)!=type(None):
+                nodule = nodule[nodule > filter_brightness]
+            if nodule.size==0:
+                #print("invalid nodule encounter in pid={}".format(pid))
+                continue
+            mean = np.mean(nodule)
+            median = np.median(nodule)
+
+            means += mean
+            median += median
+            n_nodule += 1
+            #print("img shape", img.shape)
+            #print("crop index", z1,y1,x1,z2,y2,x2)
+            #print("nodule shape", nodule.shape)
+            #print("mean", mean)
+            #print("median", median)
+            #utils_hsz.AnimationViewer(nodule, note=pid+"-box"+str(i))
+    print("Total nodules:", n_nodule)
+    print("Filter brightness:", filter_brightness)
+    print("Mean brightness:", means/n_nodule)
+    print("Median brightness:", median/n_nodule)
         
 
 if __name__ == "__main__":
-    ...
+    from view_dataset import ct_ldct
     #print("Using:", CURRENT_DATASET_PKL_PATH)
-    main(CURRENT_DATASET_PKL_PATH, only_spacing=True)
+    
+    #main(CURRENT_DATASET_PKL_PATH, only_spacing=True)
     complete_excel_path = "D:\CH\LungDetection\AI-肺部手術病人資料.xlsx"
     #get_benign_malignant(CURRENT_DATASET_PKL_PATH, complete_excel_path)
     #get_study_range_and_age(CURRENT_DATASET_PKL_PATH, complete_excel_path)
     #get_sex(CURRENT_DATASET_PKL_PATH, complete_excel_path)
-    get_nodule_stats(CURRENT_DATASET_PKL_PATH, view_img=False)
+    #get_nodule_stats(CURRENT_DATASET_PKL_PATH, view_img=False, only_pids=None)
+
+    ## nodule size
+    ct_dic = ct_ldct(return_pids=True)
+    #get_nodule_stats(CURRENT_DATASET_PKL_PATH, view_img=False, only_pids=ct_dic["CT"])
+    #get_nodule_stats(CURRENT_DATASET_PKL_PATH, view_img=False, only_pids=ct_dic["LDCT"])
     #get_nodule_size2(CURRENT_DATASET_PKL_PATH, complete_excel_path)
+
+    ## nodule brightness
+    #nodule_brightness(only_pids=ct_dic["CT"], filter_brightness=0.1)
+    nodule_brightness(only_pids=ct_dic["LDCT"], filter_brightness=0.0)
+
+
