@@ -691,21 +691,33 @@ def plot_froc_performance(save=False, save_path=None, save_name="froc performanc
     #from matplotlib.ticker import FixedFormatter
     general_x = [8,4,2,1,0.5,0.25,0.125]
 
-    # full
+    # full (v1)
+    # settings = {
+    #     "CSP block (YOLOv4)":{"x":general_x , "y":[0.841,0.795,0.704,0.588,0.458,0.325,0.211] , "CPM":0.560},
+    #     "CSP block + SSR":{"x":general_x , "y":[0.8743, 0.8414, 0.7775, 0.6743, 0.5658, 0.4162, 0.2944] , "CPM":0.6348},
+    #     "CSP block + self-FPR":{"x":general_x , "y":[0.873,0.826,0.778,0.706,0.622,0.499,0.384] , "CPM":0.670},
+    #     "SA block (YOLOv4)":{"x":general_x , "y":[0.909,0.858,0.792,0.674,0.539,0.397,0.269] , "CPM":0.634},
+    #     "SA block + self-FPR":{"x":general_x , "y":[0.915,0.882,0.844,0.789,0.716,0.610,0.475] , "CPM":0.747},
+    #     "SA block + iterative self-FPR":{"x":general_x , "y":[0.920,0.898,0.860,0.807,0.737,0.667,0.579] , "CPM":0.7803},
+    #     "CSP-SA block + iterative self-FPR":{"x":general_x , "y":[0.918,0.887,0.849,0.800,0.752,0.685,0.576] , "CPM":0.7810},
+    #     "CSP-SA block + iterative self-FPR + SSR":{"x":general_x , "y":[0.8958,0.8896,0.8729,0.8333,0.7872,0.7221,0.6385] , "CPM":0.8057},
+    # }
+
+    # full (v2)
     settings = {
-        "CSP block (YOLOv4)":{"x":general_x , "y":[0.841,0.795,0.704,0.588,0.458,0.325,0.211] , "CPM":0.560},
+        "CSP block (YOLOv4)":{"x":general_x , "y":[0.8414,0.795,0.704,0.588,0.458,0.325,0.211] , "CPM":0.5602},
         "CSP block + SSR":{"x":general_x , "y":[0.8743, 0.8414, 0.7775, 0.6743, 0.5658, 0.4162, 0.2944] , "CPM":0.6348},
-        "CSP block + self-FPR":{"x":general_x , "y":[0.873,0.826,0.778,0.706,0.622,0.499,0.384] , "CPM":0.670},
-        "SA block (YOLOv4)":{"x":general_x , "y":[0.909,0.858,0.792,0.674,0.539,0.397,0.269] , "CPM":0.634},
-        "SA block + self-FPR":{"x":general_x , "y":[0.915,0.882,0.844,0.789,0.716,0.610,0.475] , "CPM":0.747},
-        "SA block + iterative self-FPR":{"x":general_x , "y":[0.920,0.898,0.860,0.807,0.737,0.667,0.579] , "CPM":0.7803},
-        "CSP-SA block + iterative self-FPR":{"x":general_x , "y":[0.918,0.887,0.849,0.800,0.752,0.685,0.576] , "CPM":0.7810},
-        "CSP-SA block + iterative self-FPR + SSR":{"x":general_x , "y":[0.8958,0.8896,0.8729,0.8333,0.7872,0.7221,0.6385] , "CPM":0.8057},
+        "CSP block + iterative self-FPR (single-iterative)":{"x":general_x , "y":[0.873,0.826,0.778,0.706,0.622,0.499,0.384] , "CPM":0.6698},
+        "SA block":{"x":general_x , "y":[0.9081,0.8668,0.8168,0.7461,0.6472,0.5371,0.3944] , "CPM":0.7024},
+        "SA block + iterative self-FPR (single-iterative)":{"x":general_x , "y":[0.915,0.882,0.844,0.789,0.716,0.610,0.475] , "CPM":0.7474},
+        "SA block + iterative self-FPR (multi-iterative)":{"x":general_x , "y":[0.9198,0.8921,0.8598,0.8074,0.7371,0.6667,0.5789] , "CPM":0.7803},
+        "CSP-SA block + iterative self-FPR (multi-iterative)":{"x":general_x , "y":[0.9176,0.8867,0.8490,0.8004,0.7524,0.6851,0.5757] , "CPM":0.7810},
+        "CSP-SA block + SSR + iterative self-FPR (multi-iterative)":{"x":general_x , "y":[0.8958,0.8896,0.8729,0.8333,0.7872,0.7221,0.6385] , "CPM":0.8057},
     }
 
 
     ## brucetu
-    plt.figure(figsize=(14.0/2.54, 12*1.1/2.54))
+    plt.figure(figsize=(14.0/2.54*1.37, 12*1.1/2.54*1.37)) # (W,H)
     font = {'family': 'Times New Roman',
             'size': 12}
     plt.rc('font', **font)
@@ -716,7 +728,7 @@ def plot_froc_performance(save=False, save_path=None, save_name="froc performanc
     #plt.xlabel("Average Number of False Positive per Scan", fontsize=14, weight="bold", **csfont)
     #plt.ylabel("Sensitivity", fontsize=14, weight="bold", **csfont)
     #plt.title("FROC Performance", fontsize=16, weight="bold", **csfont)
-    plt.xlabel("Average Number of False Positive per Scan")
+    plt.xlabel("Average Number of FP per Scan")
     plt.ylabel("Sensitivity")
     if plot_8to1:
         plt.title("Detection Sensitivity at the Pre-defined FP Values")
@@ -725,7 +737,7 @@ def plot_froc_performance(save=False, save_path=None, save_name="froc performanc
     plt.xscale('log', base=2)
     leg_font = font_manager.FontProperties(family='Times New Roman',
                                             weight=None, # None or "bold" or "italic"
-                                            style='italic', # "normal" or "italic"
+                                            style='normal', # "normal" or "italic"
                                             size=10)
 
     for name, data in settings.items():
@@ -738,14 +750,21 @@ def plot_froc_performance(save=False, save_path=None, save_name="froc performanc
             plt.plot(x,y, label=name, lw=2)
         else:
             if cpm_leg:
-                name = name+'; CPM=%.3f' % cpm
+                name = name+', CPM=%.4f' % cpm
             plt.plot(x,y, label=name, lw=2)
 
     plt.legend(loc='lower right', prop=leg_font)
     if plot_8to1:
         general_x = general_x[:4]
-    plt.xticks(general_x)
-    plt.xticks(general_x, labels=[str(x) for x in general_x], fontsize=12, **csfont)  
+    #plt.xticks(general_x)
+
+    #(1)
+    #plt.xticks(general_x, labels=[str(x) for x in general_x], fontsize=12, **csfont)  
+
+    #(2)
+    xtick_lut = {8:"8", 4:"4", 2:"2", 1:"1", 0.5:"1/2", 0.25:"1/4", 0.125:"1/8"}
+    plt.xticks(general_x, labels=[xtick_lut[x] for x in general_x], fontsize=12, **csfont)  
+
     plt.yticks(np.arange(0, 1+0.1, 0.1), fontsize=12, **csfont)
     #plt.ylim(bottom=0, top=1)
     #ax.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
@@ -766,5 +785,5 @@ if __name__ == "__main__":
     #_test_mean_statistics()
     #plot_froc_performance()
     #plot_froc_performance(True, r"D:/CH/LungDetection/exp imgs", "froc performance 8to1.png", plot_8to1=True)
-    plot_froc_performance(True, r"D:/CH/LungDetection/exp imgs", "froc performance.png", cpm_leg=False)
+    plot_froc_performance(True, r"D:/CH/LungDetection/exp imgs", "froc performance v2.png", cpm_leg=True)
 

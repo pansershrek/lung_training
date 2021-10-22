@@ -2,7 +2,7 @@
 
 A 3-D implementation of YOLOv4 for lung nodule detection in CT images.
 
-## The Brief Folder Hierarchy (Only Often Used/Modified Files are Presented)
+## The Brief Folder Hierarchy (Only Often Used/Modified Files are Listed)
 
 ```txt
 ├── README.md
@@ -49,7 +49,7 @@ A 3-D implementation of YOLOv4 for lung nodule detection in CT images.
 ## Before running any script, please adjust global_variable.py and yolov4_config.py to fit your data location and desired settings to avoid any annoying error.
 ___
 
-## Training with Validation
+## Training with validation
 
 1. Adjust some settings in the yolov4_config.py
 2. Start training by typing ...
@@ -67,5 +67,49 @@ python train3D.py --exp_name <EXPERIMENT_NAME> [--resume] [--weight_path <PRETRA
 ```bash
 python draw_froc.py
 ```
+___
+
+## **Quick categorization of the codes**
+
+## Files related to data I/O and preprocessing
+- dicom_reader.py
+- dataset.py
+- yolo4dataset.py
+- lung_extraction.py
+- random_crop.py
+- copy_paste.py
+- stackng_z_slices.py
+- k_means_3D.py
+
+## Files related to model architecture definitions
+- build_model.py
+- CSPDarknet53.py
+- resnest.py
+- YOLOv4.py
+- yolo_head.py
+
+## Files related to training configurations
+- yolov4_config.py
+- global_variable.py
+
+## Files related to the procedures executed in training/evaluation/FP-reduction
+- train3D.py
+- trainer.py
+- evaluator.py
+- draw_froc.py
+- froc.py
+
+## Files related to data/dataset/result visualization
+- view_dataset.py
+- view_dicom_tag.py
+- fast_evaluate.py
+
+## Files of tool functions
+- tools.py
+- utils_ccy.py
+- utils_hsz.py
+
+
+
 
 

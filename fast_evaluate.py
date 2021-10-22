@@ -88,8 +88,8 @@ def fast_evaluate(npy_dir_path, pid, npy_name, exp_name, top_k=3, check_gt=False
         pad_img = np.pad(img, [[0,pad_d],[0,pad_h],[0,pad_w]])
         img = pad_img
     bbox2 = [b[:6] for b in gt_boxes] if check_gt else None
-    print("A", [box for box, _ in boxes])
-    print("B", bbox2)
+    print("A (pred)", [box for box, _ in boxes])
+    print("B (GT)", bbox2)
     utils_hsz.AnimationViewer(img, bbox=[box for box, _ in boxes], verbose=False, bbox2=bbox2, bold_box=bold_box)
 
 def plot_img_with_bbox(pid = "10755333", extra_bbox=(), use_5mm=False, use_2d5mm=False, add_notFP=False):
@@ -122,10 +122,11 @@ def plot_img_with_bbox(pid = "10755333", extra_bbox=(), use_5mm=False, use_2d5mm
     utils_hsz.AnimationViewer(img, bbox=boxes)
 
 if __name__ == "__main__":
+    from view_dataset import ct_ldct
     #plot_img_with_bbox(use_2d5mm=True, add_notFP=True, pid=None)
     #raise EOFError
     #pid = "1926851"
-    top_k = 1000
+    top_k = 5
     fix_spacing = (1.25,0.75,0.75)
     npy_name = "hu+norm_256x256x256.npy"
     exp_name = "train_256_256_256_1"
@@ -139,30 +140,38 @@ if __name__ == "__main__":
     batch_1_eval = True
     npy_name = None
     use_lung_voi = True
-    exp_name = "train_rc_config_5.15_attnetion2_layer0_f2" #"train_rc_config_5.6.4_resnest_shallower_f0_fake_1.25_testing"
+    exp_name = "train_rc_config_5.6_resnest+sgd_shallower" #"train_rc_config_5.6.4_resnest_shallower_f0_fake_1.25_testing"
     fix_spacing = (1.25, 0.75, 0.75)
-    use_5mm = True
+
+    # use 5mm or not
+    use_5mm = False
     load_5mm_pkl = "fast_test_max_5.0x0.75x0.75.pkl"
 
     ## validation
     npy_dir_path = pjoin("checkpoint", exp_name, "evaluate")
 
     ## testing (draw_froc.py)
-    exp_name = "train_rc_config_5.11_csp+group_iterative_fp_update_f1_EXTRA_FP"
+    exp_name = "train_rc_config_5.15_attnetion2_layer0_f2_EXTRA_FP" #272
+    exp_name = "train_rc_config_5.15_attetion2_layer0_for_2d5mm_f2_EXTRA_FP" #170
     #exp_name += "_train_debug"
     exp_name += "_testing"
-    epoch = 300
+    epoch = 170
     #npy_dir_path = pjoin("preidction", exp_name, str(epoch), "evaluate")
     npy_dir_path = pjoin("preidction", exp_name, str(epoch)+"_conf0.015", "evaluate")
     use_5mm = False
     load_5mm_pkl = None
 
     ## choosing pid
-    #pids = os.listdir(npy_dir_path)
+    pids = [pid.split("_test")[0] for pid in os.listdir(npy_dir_path)]
+    #pids_both = ct_ldct(return_pids=True)
+    #pids_ct, pids_ldct = pids_both["CT"], pids_both["LDCT"]
+    #pids = [pid for pid in pids if pid in pids_ct]
+    
     #pids = ["1034114"]
-    pids = ["13564970"]
+    #pids = ["13564970"]
     #pids = [ os.listdir(npy_dir_path)[26] ]
-    pids = ['28719691', '23829163', '28753759']
+    #pids = ['28719691', '23829163', '28753759']
+    #pids = ['15179190'] # SA block good but CSP bad
 
     ## view_raw (mostly no use)
     view_raw = False

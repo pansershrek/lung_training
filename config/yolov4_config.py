@@ -177,10 +177,7 @@ TRAIN = {
          "DO_HARD_NEGATIVE_MINING": False, #OHEM
          "HARD_NEGATIVE_MINING_START_EPOCH": 150,
 
-         # 2021/3/4 v1: (目前 "0,1" + No_use_zero_conf + "try fp reduction loss" 表現最好)
-         # 2021/3/6: "0,1" + use_zero_conf has similar(same) performance as 2021/3/4
-         # 2021/3/8: "1,1" + use_zero_conf has super bad result (cpm<0.3)
-         #for 96
+
          #"WARMUP_EPOCHS": 10 #40  # or None
          }
 

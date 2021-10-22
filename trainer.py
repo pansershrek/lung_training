@@ -36,7 +36,7 @@ from adabelief_pytorch import AdaBelief
 #from databuilder.abus import ABUSDetectionDataset
 from dataset import Tumor, LungDataset
 from databuilder.yolo4dataset import YOLO4_3DDataset
-from global_variable import CURRENT_DATASET_PKL_PATH, USE_LUNA, MASK_SAVED_PATH, NEGATIVE_NPY_SAVED_PATH, ITERATIVE_FP_CROP_PATH, NPY_SAVED_PATH
+from global_variable import CURRENT_DATASET_PKL_PATH, MASK_SAVED_PATH, NEGATIVE_NPY_SAVED_PATH, ITERATIVE_FP_CROP_PATH, NPY_SAVED_PATH
 
 class Trainer(object):
     def __init__(self, testing_mode, weight_path, checkpoint_save_dir, resume, gpu_id, accumulate, fp_16, writer, logger, crx_fold_num,
@@ -689,7 +689,7 @@ class Trainer(object):
             
             txt = "Average time cost: {:.2f} sec.".format((time.time() - start_time)/len(self.test_dataloader))
             print(txt)
-            annotation_file = "annotation_luna.txt" if USE_LUNA else "annotation_chung.txt"
+            annotation_file = "annotation_chung.txt"
             if self.eval_random_crop:
                 area_dist, area_iou, plt, sub_log_txt, cpm_dist, cpm, max_sens_dist, max_sens_iou = calculate_FROC_randomcrop(annotation_file, npy_dir, npy_format, size_threshold=20, th_step=0.01, ori_dataset=self.test_dataset.ori_dataset, det_tp_iou_thresh=self.det_tp_iou_thresh)
             else:
