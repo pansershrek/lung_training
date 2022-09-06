@@ -2,8 +2,8 @@ import torch.nn as nn
 import torch
 import numpy as np
 
-from head.yolo_head import Yolo_head
-from YOLOv4 import YOLOv4
+from .head.yolo_head import Yolo_head
+from .YOLOv4 import YOLOv4
 
 
 class BuildModel(nn.Module):
