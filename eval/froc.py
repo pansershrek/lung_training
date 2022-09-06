@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import sys
 
-sys.path.append("D:/CH/LungDetection/training")
+sys.path.append("/workspace/pancreas")
 
 from dataset import Tumor, LungDataset
 from databuilder.yolo4dataset import YOLO4_3DDataset

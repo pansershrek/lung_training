@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 if __name__ == "__main__":
     import sys
-    sys.path.append("D:/CH/LungDetection/training")
+    sys.path.append("/workspace/pancreas/training")
 
 from .layers.attention_layers import SEModule, SEModule_Conv, CBAM
 

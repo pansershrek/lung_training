@@ -1,6 +1,6 @@
 import sys
 sys.path.append("..")
-sys.path.append("D:/CH/LungDetection/training")
+sys.path.append("/workspace/pancreas")
 
 import torch.nn as nn
 import torch

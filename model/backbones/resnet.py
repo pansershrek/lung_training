@@ -21,7 +21,7 @@ try:
     from model.layers.attention_layers import SEModule, SEModule_Conv, CBAM
 except (ImportError, ModuleNotFoundError):
     from splat import SplAtConv3d
-    sys.path.append("D:/CH/LungDetection/training")
+    sys.path.append("/workspace/pancreas")
     from model.layers.attention_layers import SEModule, SEModule_Conv, CBAM
     
 

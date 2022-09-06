@@ -12,7 +12,7 @@ try:
     from .backbones.resnest import _BuildResNeSt3D
     from .backbones.scnet3d import _Build_SCResNeSt3D
 except:
-    sys.path.append("D:/CH/LungDetection/training")
+    sys.path.append("/workspace/pancreas")
     import config.yolov4_config as cfg
     from model.backbones.CSPDarknet53 import _BuildCSPDarknet53
     from model.backbones.mobilenetv2 import _BuildMobilenetV2

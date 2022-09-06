@@ -35,7 +35,7 @@ class CosineDecayLR(_LRScheduler):
 
 if __name__ == '__main__':
     import sys
-    sys.path.append("D:/CH/LungDetection/training")
+    sys.path.append("/workspace/pancreas")
     import matplotlib.pyplot as plt
     from model.YOLOv4 import YOLOv4
     import torch.optim as optim

@@ -3,13 +3,13 @@ import sys
 try:
     from .conv_ws import ConvAWS2d, ConvAWS3d
 except:
-    sys.path.append("D:/CH/LungDetection/training/detectoRS/mmdet/ops")
+    sys.path.append("/workspace/pancreas/detectoRS/mmdet/ops")
     from conv_ws import ConvAWS2d, ConvAWS3d
 #from .dcn import deform_conv #original, but support 2D cuda only
 
-sys.path.append("D:/CH/LungDetection/training/detectoRS/D3Dnet/code/dcn/functions")
+sys.path.append("/workspace/pancreas/detectoRS/D3Dnet/code/dcn/functions")
 from deform_conv_func import deform_conv_3d
-sys.path.append("D:/CH/LungDetection/training/config")
+sys.path.append("/workspace/pancreas/config")
 import yolov4_config as cfg
 
 
