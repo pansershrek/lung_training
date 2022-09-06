@@ -7,6 +7,8 @@ ENV TZ=Europe
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN apt-get update
 RUN apt-get install ffmpeg libsm6 libxext6  -y
+
+COPY requirements.txt /opt/install/
 RUN pip3 install -r /opt/install/requirements.txt
 
 COPY . ./
