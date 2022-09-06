@@ -8,8 +8,7 @@ if __name__ == "__main__":
     import sys
     sys.path.append("D:/CH/LungDetection/training")
 
-from model.layers.attention_layers import SEModule, SEModule_Conv, CBAM
-import config.yolov4_config as cfg
+from layers.attention_layers import SEModule, SEModule_Conv, CBAM
 
 if 0:
     #non cuda supported
@@ -77,7 +76,7 @@ class CSPBlock(nn.Module):
             hidden_channels = out_channels
 
         self.activation = activate_name[residual_activation]
-        self.attention = cfg.ATTENTION["TYPE"]
+        self.attention = "SEnet"
 
         #if self.attention == "SplAt":
         #    use_splat = True
@@ -192,15 +191,14 @@ class CSPDarknet53(nn.Module):
         #channel_factor = 1/16 * 1
 
         if (stem_channels == None):
-            stem_channels = cfg.MODEL["CSPDARKNET53_STEM_CHANNELS"]
+            stem_channels = 4
 
-            
         if (feature_channels == None):
-            feature_channels=cfg.MODEL["CSPDARKNET53_FEATURE_CHANNELS"]
+            feature_channels = [16,24,64,128]
             channel_factor = 1.0
-           
+
         #blocks_per_stage = [2,8,8,4] #original
-        blocks_per_stage = cfg.MODEL["CSPDARKNET53_BLOCKS_PER_STAGE"]
+        blocks_per_stage = [3, 3, 3]
 
         #4_8_128
         #stem_channels = 4
@@ -229,10 +227,10 @@ class CSPDarknet53(nn.Module):
                 CSPFirstStage(stem_channels, feature_channels[0], dims=dims),
                 CSPStage(feature_channels[0], feature_channels[1], 2, dims=dims),
                 CSPStage(feature_channels[1], feature_channels[2], 8, dims=dims),
-                CSPStage(feature_channels[2], feature_channels[3], 8, dims=dims), 
-                CSPStage(feature_channels[3], feature_channels[4], 4, dims=dims)  
+                CSPStage(feature_channels[2], feature_channels[3], 8, dims=dims),
+                CSPStage(feature_channels[3], feature_channels[4], 4, dims=dims)
             ])
-        
+
         assert len(feature_channels) == len(self.stages)
         assert len(blocks_per_stage) == len(self.stages) - 1 # first_stage not changable
 
@@ -350,8 +348,6 @@ class CSPDarknet53(nn.Module):
 def _BuildCSPDarknet53(in_channel, weight_path, resume, dims=2):
     model = CSPDarknet53(in_channel, weight_path=weight_path, resume=resume, dims=dims)
     out = model, model.feature_channels[-3:]
-    #print("At _BuildCSPDarknet53:", out[1])
-    #raise TypeError
     return out
 
 if __name__ == '__main__':

@@ -138,7 +138,7 @@ TRAIN = {
          "CIOU_LOSS_MULTIPLIER": 1.0 , # *1.0, 2.0
          #for 640
          "WARMUP_EPOCHS": 5, #40  # or None
-         "USING_RANDOM_CROP_TRAIN": True,
+         "USING_RANDOM_CROP_TRAIN": False,
          "RANDOM_CROP_FILE_PREFIX": "random_crop_128x128x128_1.25x0.75x0.75", #"random_crop_128x128x128_1.25x0.75x0.75_fake1.25_from_5mm_max", # 5MM
          "RANDOM_CROP_SPACING": (1.25, 0.75, 0.75), #used in dataset.__getitem__ if using "fresh-cropped", 5MM
          "RANDOM_CROP_NCOPY": 20,
@@ -164,7 +164,7 @@ TRAIN = {
         
          "HORIZONTAL_FLIP_RATE": 0.5, # 0.3, 0.5. *0.0 prob to flip crops horizontally during training (only be appllied for random_crops dataset)
          
-         "USE_EXTRA_ANNOTATION": True, # whether to use another data
+         "USE_EXTRA_ANNOTATION": False, # whether to use another data
          "EXTRA_ANNOTATION_CROP_PREFIX": "another_data_128x128x128_1.25x0.75x0.75",
          "EXTRA_ANNOTATION_NCOPY": 5,
          "USE_EXTRA_ANNOTATION_START_EPOCH": 100, 
@@ -201,7 +201,7 @@ VAL = {
         "USING_RANDOM_CROP_EVAL": False, # T/F
         "BATCH_1_EVAL": True, # T/F
         "RANDOM_CROPPED_VOI_FIX_SPACING": (1.25,0.75,0.75), #(z,y,x), 5MM
-        "TEST_LUNG_VOI": True, # T/F, whether to use lung voi only during testing 
+        "TEST_LUNG_VOI": False, # T/F, whether to use lung voi only during testing 
         "TEST_LUNG_VOI_IGNORE_INVALID_VOI": False, # T/F, whether to ignore pid listed in ${MASK_SAVED_PATH}/error.txt automatocaly
  
         # to load fake_1.25mm (from 5mm or 2.5mm) test img, do the following settings:
