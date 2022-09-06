@@ -1,0 +1,1 @@
+python3 pancreas_main.py

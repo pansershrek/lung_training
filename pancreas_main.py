@@ -11,26 +11,36 @@ from pancreas_trainer import Trainer
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--images-path-train", default="", help="Path to train images"
+        "--images-path-train",
+        default="/pancreas/train/imagesTr",
+        help="Path to train images"
     )
     parser.add_argument(
-        "--bbox-path-train", default="", help="Path to train bboxes"
+        "--bbox-path-train",
+        default="/pancreas/train/bbox3d",
+        help="Path to train bboxes"
     )
     parser.add_argument(
-        "--images-path-val", default="", help="Path to val images"
+        "--images-path-val",
+        default="/pancreas/val/imagesTr",
+        help="Path to val images"
     )
     parser.add_argument(
-        "--bbox-path-val", default="", help="Path to val bboxes"
+        "--bbox-path-val",
+        default="/pancreas/val/bbox3d",
+        help="Path to val bboxes"
     )
     parser.add_argument(
         "--checkpoint-save-dir",
-        default="",
+        default="/pancreas/checkpoint_save_dir",
         help="Path to checkpoint's saves dir"
     )
     parser.add_argument("--epochs", default=300, help="Epochs number")
     parser.add_argument("--batch-size", default=4, help="Batch size")
     parser.add_argument("--device", default="cuda:0", help="Device")
-    parser.add_argument("--log-path", default="", help="Path for logs")
+    parser.add_argument(
+        "--log-path", default="/pancreas/logs", help="Path for logs"
+    )
     args = parser.parse_args()
 
     train_dataset = PancreasDataset(
@@ -49,6 +59,7 @@ def main():
         train_dataset, val_dataset, args.checkpoint_save_dir, writer, logger,
         args.device, args.epochs, args.batch_size
     )
+    trainer.train()
 
 
 if __name__ == "__main__":
