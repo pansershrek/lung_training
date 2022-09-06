@@ -2,6 +2,7 @@ FROM nvcr.io/nvidia/pytorch:21.02-py3
 
 ENV http_proxy http://185.46.212.97:9480
 ENV https_proxy http://185.46.212.97:9480
+ENV TZ=Europe/Moscow
 
 RUN apt-get update
 RUN apt-get install ffmpeg libsm6 libxext6  -y
