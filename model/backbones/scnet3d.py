@@ -19,7 +19,7 @@ except (ImportError, ModuleNotFoundError):
     from splat import SplAtConv3d
 
 import sys
-sys.path.append("D:/CH/LungDetection/training")
+sys.path.append("/workspace/pancreas")
 import config.yolov4_config as cfg
 from model.layers.attention_layers import SEModule, SEModule_Conv, CBAM
 

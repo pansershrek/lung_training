@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch.nn import Conv3d, Module, Linear, BatchNorm3d, ReLU
 from torch.nn.modules.utils import _pair
 import sys
-sys.path.append("D:/CH/LungDetection/training/detectoRS/mmdet/ops")
+sys.path.append("/workspace/pancreas/detectoRS/mmdet/ops")
 from saconv import SAConv3d
 __all__ = ['SplAtConv3d']
 

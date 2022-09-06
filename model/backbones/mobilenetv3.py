@@ -203,12 +203,12 @@ class FeatureExtractor(nn.Module):
     def forward(self, x):
         outputs = []
         for name, module in self.submodule._modules.items():
-            if name is "features":
+            if name == "features":
                 for f_name, f_module in module._modules.items():
                     x = f_module(x)
                     if f_name in self.extracted_layers:
                         outputs.append(x)
-            if name is "conv":
+            if name == "conv":
                 x = module(x)
                 if name in self.extracted_layers:
                     outputs.append(x)

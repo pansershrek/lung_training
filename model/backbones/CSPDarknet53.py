@@ -8,7 +8,7 @@ if __name__ == "__main__":
     import sys
     sys.path.append("D:/CH/LungDetection/training")
 
-from layers.attention_layers import SEModule, SEModule_Conv, CBAM
+from .layers.attention_layers import SEModule, SEModule_Conv, CBAM
 
 if 0:
     #non cuda supported

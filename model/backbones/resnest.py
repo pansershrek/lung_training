@@ -16,7 +16,7 @@ try:
 except (ImportError, ModuleNotFoundError):
     from resnet import ResNet, Bottleneck
     import sys
-    sys.path.append("D:/CH/LungDetection/training")
+    sys.path.append("/workspace/pancreas")
     import config.yolov4_config as cfg
 
 __all__ = ['resnest50', 'resnest101', 'resnest200', 'resnest269']

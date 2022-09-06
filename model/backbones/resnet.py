@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 
 import sys
-sys.path.append("D:/CH/LungDetection/training/detectoRS/mmdet/ops")
+sys.path.append("/workspace/pancreas/detectoRS/mmdet/ops")
 from saconv import SAConv3d
 
 try:
