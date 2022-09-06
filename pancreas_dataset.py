@@ -82,7 +82,7 @@ class PancreasDataset(Dataset):
         output, exist = self.cacher.get(idx)
         if exist:
             return output
-        image_name = self.meta_data[idx]["name"].replace("nii.gz", "txt")
+        image_name = self.meta_data[idx]["name"].replace("txt", "nii.gz")
         image = nib.load(os.path.join(self.images_dir, image_name)).get_fdata()
         bboxes = self.scale_bbox(image.shape, self.image_size,  self.meta_data[idx]["bbox"])
         image = utils.resize_without_pad(
