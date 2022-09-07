@@ -83,12 +83,12 @@ class SpatialPyramidPooling(nn.Module):
                 if m.bias is not None:
                     m.bias.data.zero_()
 
-                print("initing {}".format(m))
+                #print("initing {}".format(m))
             elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm3d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-                print("initing {}".format(m))
+                #print("initing {}".format(m))
 
 
 class Upsample(nn.Module):
@@ -187,12 +187,12 @@ class PANet(nn.Module):
                 if m.bias is not None:
                     m.bias.data.zero_()
 
-                print("initing {}".format(m))
+                #print("initing {}".format(m))
             elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm3d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-                print("initing {}".format(m))
+                #print("initing {}".format(m))
 
 class PredictNet(nn.Module):
     def __init__(self, feature_channels, target_channels, dims=2):
@@ -222,12 +222,12 @@ class PredictNet(nn.Module):
                 if m.bias is not None:
                     m.bias.data.zero_()
 
-                print("initing {}".format(m))
+                #print("initing {}".format(m))
             elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm3d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-                print("initing {}".format(m))
+                #print("initing {}".format(m))
 
 class MixLayer0Net(nn.Module):
     def __init__(self, feature_channels, layer0_nc, dims=2, mode=None):
@@ -326,12 +326,12 @@ class MixLayer0Net(nn.Module):
                 if m.bias is not None:
                     m.bias.data.zero_()
 
-                print("initing {}".format(m))
+                #print("initing {}".format(m))
             elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm3d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-                print("initing {}".format(m))
+                #print("initing {}".format(m))
 
 class YOLOv4(nn.Module):
     def __init__(self, weight_path=None, out_channels=255, resume=False, dims=2, verbose=cfg.MODEL["VERBOSE_SHAPE"]):

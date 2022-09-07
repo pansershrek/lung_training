@@ -269,12 +269,12 @@ class CSPDarknet53(nn.Module):
                 if m.bias is not None:
                     m.bias.data.zero_()
 
-                print("initing {}".format(m))
+                #print("initing {}".format(m))
             elif isinstance(m, nn.BatchNorm2d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-                print("initing {}".format(m))
+                #print("initing {}".format(m))
 
             if isinstance(m, nn.Conv3d):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.kernel_size[2] * m.out_channels
@@ -282,12 +282,12 @@ class CSPDarknet53(nn.Module):
                 if m.bias is not None:
                     m.bias.data.zero_()
 
-                print("initing {}".format(m))
+                #print("initing {}".format(m))
             elif isinstance(m, nn.BatchNorm3d):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-                print("initing {}".format(m))
+                #print("initing {}".format(m))
 
 
     def load_CSPdarknet_weights(self, weight_file, cutoff=52, dims=2):
