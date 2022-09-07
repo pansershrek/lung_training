@@ -227,27 +227,27 @@ class Trainer:
 
                 if self.writer:
                     self.writer.add_scalar(
-                        'loss_ciou', mloss[0],
+                        'train/loss_ciou', mloss[0],
                         len(self.train_dataloader) * epoch + idx
                     )
                     self.writer.add_scalar(
-                        'loss_conf', mloss[1],
+                        'train/loss_conf', mloss[1],
                         len(self.train_dataloader) * epoch + idx
                     )
                     self.writer.add_scalar(
-                        'loss_cls', mloss[2],
+                        'train/loss_cls', mloss[2],
                         len(self.train_dataloader) * epoch + idx
                     )
                     self.writer.add_scalar(
-                        'train_loss', mloss[3],
+                        'train/train_loss', mloss[3],
                         len(self.train_dataloader) * epoch + idx
                     )
                     self.writer.add_scalar(
-                        'train_pr99.9_p_conf', mloss[4],
+                        'train/train_pr99.9_p_conf', mloss[4],
                         len(self.train_dataloader) * epoch + idx
                     )
                     self.writer.add_scalar(
-                        'train_lr', self.optimizer.param_groups[0]["lr"],
+                        'train/train_lr', self.optimizer.param_groups[0]["lr"],
                         len(self.train_dataloader) * epoch + idx
                     )
             self._save_model_weights(epoch)
@@ -258,15 +258,15 @@ class Trainer:
                     max_sens_iou
                 ) = self.validate()
                 if self.writer:
-                    self.writer.add_scalar('AUC (IOU)', area_iou, epoch)
-                    self.writer.add_scalar('CPM (IOU)', cpm, epoch)
-                    self.writer.add_scalar('AUC (dist)', area_dist, epoch)
-                    self.writer.add_scalar('CPM (dist)', cpm_dist, epoch)
+                    self.writer.add_scalar('val/AUC_(IOU)', area_iou, epoch)
+                    self.writer.add_scalar('val/CPM_(IOU)', cpm, epoch)
+                    self.writer.add_scalar('val/AUC_(dist)', area_dist, epoch)
+                    self.writer.add_scalar('val/CPM_(dist)', cpm_dist, epoch)
                     self.writer.add_scalar(
-                        'Max sens(iou)', max_sens_iou, epoch
+                        'val/Max_sens(iou)', max_sens_iou, epoch
                     )
                     self.writer.add_scalar(
-                        'Max sens(dist)', max_sens_dist, epoch
+                        'val/Max_sens(dist)', max_sens_dist, epoch
                     )
 
     def validate(self):
