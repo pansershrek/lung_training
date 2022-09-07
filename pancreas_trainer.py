@@ -116,7 +116,7 @@ class Trainer:
         device,
         epochs,
         batch_size=4,
-        val_interval=3,
+        val_interval=1,
         seed=1717,
     ):
         self._setup_seed(seed)
