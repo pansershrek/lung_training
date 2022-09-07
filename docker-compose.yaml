@@ -9,4 +9,9 @@ services:
       - /home/g-skiba/pancreas_new_data/val/bbox3d:/pancreas/val/bbox3d
       - /home/g-skiba/pancreas_new_data/checkpoint_save_dir:/pancreas/checkpoint_save_dir
       - /home/g-skiba/pancreas_new_data/logs:/pancreas/logs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
 
