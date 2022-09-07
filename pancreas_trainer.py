@@ -494,7 +494,7 @@ class Trainer:
             np.arange(len(pred_coor)), classes
         ]  # score = pred_prob_from_class * pred_conf (p.s. it only used sigmoid, no softmax in YoloHead)
 
-        score_mask = scores > self.conf_thresh
+        score_mask = scores > 0.015
 
         mask = np.logical_and(scale_mask, score_mask)
 
