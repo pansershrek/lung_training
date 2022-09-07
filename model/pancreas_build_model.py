@@ -65,7 +65,7 @@ class BuildModel(nn.Module):
             dims=dims
         )
 
-        self.verbose = True
+        self.verbose = False
 
     def forward(self, x):
         out = []

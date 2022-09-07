@@ -190,7 +190,9 @@ class Trainer:
 
     def train(self):
         self.logger.info("Start to train model")
-        self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level='O1')
+        self.model, self.optimizer = amp.initialize(
+            self.model, self.optimizer, opt_level='O1'
+        )
         for epoch in range(self.epochs):
             self.model.train()
             mloss = torch.zeros(5)
@@ -280,8 +282,8 @@ class Trainer:
                 gt_lut[data["names"]] = data["bbox"]
                 pred_lut[data["names"]] = bboxes_prd
         (
-            area_dist, area_iou, sub_log_txt, cpm_dist, cpm,
-            max_sens_dist, max_sens_iou, fp_bboxes_all_pid
+            area_dist, area_iou, sub_log_txt, cpm_dist, cpm, max_sens_dist,
+            max_sens_iou, fp_bboxes_all_pid
         ) = self._calculate_FROC(
             gt_lut,
             pred_lut,
@@ -291,18 +293,14 @@ class Trainer:
             return_fp_bboxes=True
         )
         return (
-            area_dist, area_iou, cpm_dist, cpm, max_sens_dist,
-            max_sens_iou
+            area_dist, area_iou, cpm_dist, cpm, max_sens_dist, max_sens_iou
         )
 
     def _get_bbox(self, image):
         bboxes, box_raw_data = self._predict(image)
         boxes_no_nms = deepcopy(bboxes)
         bboxes, _ = nms(
-            bboxes,
-            score_threshold=self.conf_thresh,
-            iou_threshold=self.nms_thresh,
-            box_top_k=self.box_top_k
+            bboxes, score_threshold=0.015, iou_threshold=0.15, box_top_k=512
         )
         return bboxes, box_raw_data, boxes_no_nms
 
@@ -408,19 +406,21 @@ class Trainer:
 
             sum_TP_dist, sum_FP_dist, sum_FN_dist = TP_table_sum_dist.sum(
             ), FP_table_sum_dist.sum(), FN_table_sum_dist.sum()
-            sensitivity_dist = sum_TP_dist / (sum_TP_dist + sum_FN_dist + 1e-10)
+            sensitivity_dist = sum_TP_dist / (
+                sum_TP_dist + sum_FN_dist + 1e-10
+            )
             precision_dist = sum_TP_dist / (sum_TP_dist + sum_FP_dist + 1e-10)
 
             PERF_per_thre.append(
                 [
                     score_hit_thre,
-                    None, #total_pass,
+                    None,  #total_pass,
                     sensitivity,  # ---using iou---
                     precision,  # ---using iou---
-                    None, #sum_FP / total_pass,  # ---using iou---
+                    None,  #sum_FP / total_pass,  # ---using iou---
                     sensitivity_dist,  # ---using dist---
                     precision_dist,  # ---using dist---
-                    None #sum_FP_dist / total_pass
+                    None  #sum_FP_dist / total_pass
                 ],  # ---using dist---
             )
 
@@ -435,13 +435,17 @@ class Trainer:
         else:
             area_dist = 0.0  #prevent error
             froc_x_dist, froc_y_dist, cpm_dist, sens_for_cpm_dist = interpolate_FROC_data(
-                data[..., 7], data[..., 5], max_fps=(8, 4, 2, 1, 0.5, 0.25, 0.125)
+                data[..., 7],
+                data[..., 5],
+                max_fps=(8, 4, 2, 1, 0.5, 0.25, 0.125)
             )
             froc_x_dist, froc_y_dist = froc_take_max(froc_x_dist, froc_y_dist)
             area_dist = AUC(froc_x_dist, froc_y_dist, normalize=True)
 
             froc_x, froc_y, sub_log_txt, cpm, sens_for_cpm = interpolate_FROC_data(
-                data[..., 4], data[..., 2], max_fps=(8, 4, 2, 1, 0.5, 0.25, 0.125)
+                data[..., 4],
+                data[..., 2],
+                max_fps=(8, 4, 2, 1, 0.5, 0.25, 0.125)
             )
             froc_x, froc_y = froc_take_max(froc_x, froc_y)
             area_iou = AUC(froc_x, froc_y, normalize=True)
