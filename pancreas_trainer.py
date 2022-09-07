@@ -250,24 +250,24 @@ class Trainer:
                         'train_lr', self.optimizer.param_groups[0]["lr"],
                         len(self.train_dataloader) * epoch + idx
                     )
-                self._save_model_weights(epoch)
+            self._save_model_weights(epoch)
 
-                if (idx + 1) % self.val_interval:
-                    (
-                        area_dist, area_iou, cpm_dist, cpm, max_sens_dist,
-                        max_sens_iou
-                    ) = self.validate()
-                    if self.writer:
-                        self.writer.add_scalar('AUC (IOU)', area_iou, epoch)
-                        self.writer.add_scalar('CPM (IOU)', cpm, epoch)
-                        self.writer.add_scalar('AUC (dist)', area_dist, epoch)
-                        self.writer.add_scalar('CPM (dist)', cpm_dist, epoch)
-                        self.writer.add_scalar(
-                            'Max sens(iou)', max_sens_iou, epoch
-                        )
-                        self.writer.add_scalar(
-                            'Max sens(dist)', max_sens_dist, epoch
-                        )
+            if (epoch + 1) % self.val_interval == 0:
+                (
+                    area_dist, area_iou, cpm_dist, cpm, max_sens_dist,
+                    max_sens_iou
+                ) = self.validate()
+                if self.writer:
+                    self.writer.add_scalar('AUC (IOU)', area_iou, epoch)
+                    self.writer.add_scalar('CPM (IOU)', cpm, epoch)
+                    self.writer.add_scalar('AUC (dist)', area_dist, epoch)
+                    self.writer.add_scalar('CPM (dist)', cpm_dist, epoch)
+                    self.writer.add_scalar(
+                        'Max sens(iou)', max_sens_iou, epoch
+                    )
+                    self.writer.add_scalar(
+                        'Max sens(dist)', max_sens_dist, epoch
+                    )
 
     def validate(self):
         self.logger.info("Start to validate model")
