@@ -54,12 +54,12 @@ class PancreasDataset(Dataset):
             z_scale, y_scale, x_scale = z_new / z_original, y_new / y_original, x_new / x_original
             z1, y1, x1, z2, y2, x2 = bbox
             return [
-                round(z1 * z_scale),
-                round(y1 * y_scale),
-                round(x1 * x_scale),
-                round(z2 * z_scale),
-                round(y2 * y_scale),
-                round(x2 * x_scale)
+                round(float(z1) * float(z_scale)),
+                round(float(y1) * float(y_scale)),
+                round(float(x1) * float(x_scale)),
+                round(float(z2) * float(z_scale)),
+                round(float(y2) * float(y_scale)),
+                round(float(x2) * float(x_scale))
             ]
 
     def _zyxzyx2zyxdhw_normalize(self, bbox):
@@ -89,7 +89,7 @@ class PancreasDataset(Dataset):
             image, self.image_size, "trilinear", align_corners=False
         )
         label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self._creat_label(
-            np.array(bboxes), self.image_size
+            [np.array(bboxes),], self.image_size
         )
         output = {
             "names": self.meta_data[idx]["name"],
