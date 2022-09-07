@@ -193,6 +193,7 @@ class Trainer:
         self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level='O1')
         for epoch in range(self.epochs):
             self.model.train()
+            mloss = torch.zeros(5)
             for idx, data in enumerate(self.train_dataloader):
 
                 self.model.zero_grad()
