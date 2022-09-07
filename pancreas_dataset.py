@@ -30,7 +30,7 @@ class PancreasDataset(Dataset):
 
         for file in os.listdir(self.labels_dir):
             with open(os.path.join(self.labels_dir, file), "r") as f:
-                data = f.read().strip().split(" ")
+                data = [int(x) for x in f.read().strip().split(" ")]
                 self.meta_data[len(self.meta_data)] = {
                     "name": file,
                     "class": data[0] - 1, # Classes should start from 0, but in carrent data it starts from 1
