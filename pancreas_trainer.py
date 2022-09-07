@@ -130,7 +130,7 @@ class Trainer:
         )
         self.val_dataloader = DataLoader(
             val_dataset,
-            batch_size=1,
+            batch_size=batch_size,
             num_workers=1,
             shuffle=False,
             pin_memory=False
