@@ -50,7 +50,7 @@ def main():
 
     writer = SummaryWriter(log_dir=args.log_path)
     logger = Logger(
-        log_file_name=f"{args.log_path}/pancreas_logs",,
+        log_file_name=f"{args.log_path}/pancreas_logs",
         log_level=logging.DEBUG,
         logger_name='YOLOv4'
     ).get_log()
