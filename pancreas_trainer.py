@@ -309,7 +309,7 @@ class Trainer:
     def _predict(self, image):
         self.model.eval()
         with torch.no_grad():
-            _, p_d = self.model(image)
+            _, p_d = self.model(image.to(self.device))
         pred_bbox = p_d.squeeze().cpu().numpy()
         bboxes = self._convert_pred(pred_bbox, (0, np.inf))
         return bboxes, p_d.cpu()
