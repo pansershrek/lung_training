@@ -2,6 +2,7 @@ import os
 from copy import deepcopy
 import random
 
+from apex import amp
 import numpy as np
 import torch
 import torch.optim as optim
@@ -189,7 +190,7 @@ class Trainer:
 
     def train(self):
         self.logger.info("Start to train model")
-
+        self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level='O1')
         for epoch in range(self.epochs):
             self.model.train()
             for idx, data in enumerate(self.train_dataloader):
@@ -207,7 +208,10 @@ class Trainer:
                     data["lbboxes"].to(self.device)
                 )
 
-                loss.backward()
+                #loss.backward()
+                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                    scaled_loss.backward()
+
                 self.optimizer.step()
 
                 conf_data = p_d[0][..., 6:7].detach().cpu().numpy().flatten()
