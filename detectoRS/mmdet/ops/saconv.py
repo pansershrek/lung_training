@@ -8,7 +8,7 @@ except:
 #from .dcn import deform_conv #original, but support 2D cuda only
 
 sys.path.append("/workspace/pancreas/detectoRS/D3Dnet/code/dcn/functions")
-from deform_conv_func import deform_conv_3d
+# DEBUG from deform_conv_func import deform_conv_3d
 sys.path.append("/workspace/pancreas/config")
 import yolov4_config as cfg
 
@@ -147,7 +147,7 @@ class SAConv3d(ConvAWS3d):
                  dilation=1,
                  groups=1,
                  bias=True,
-                 use_deform=cfg.MODEL["SACONV_USE_DEFORM"]):
+                 use_deform=False):
         super().__init__(
             in_channels,
             out_channels,
@@ -215,41 +215,43 @@ class SAConv3d(ConvAWS3d):
         switch = self.switch(avg_x)
         # sac
         weight = self._get_weight(self.weight)
-        if self.use_deform:
-            offset = self.offset_s(avg_x)
-            out_s = deform_conv_3d(
-                    x,
-                    offset,
-                    weight,
-                    None, # bias==None
-                    self.stride,
-                    self.padding,
-                    self.dilation,
-                    self.groups,
-                    1,
-                    8,) # maybe need batch_size % ctx.im2col_step == 0
-        else:
-            out_s = super()._conv_forward(x, weight)
+        # if self.use_deform:
+        #     offset = self.offset_s(avg_x)
+        #     out_s = deform_conv_3d(
+        #             x,
+        #             offset,
+        #             weight,
+        #             None, # bias==None
+        #             self.stride,
+        #             self.padding,
+        #             self.dilation,
+        #             self.groups,
+        #             1,
+        #             8,) # maybe need batch_size % ctx.im2col_step == 0
+        # else:
+        #     out_s = super()._conv_forward(x, weight)
+        out_s = super()._conv_forward(x, weight)
         ori_p = self.padding
         ori_d = self.dilation
         self.padding = tuple(3 * p for p in self.padding)
         self.dilation = tuple(3 * d for d in self.dilation)
         weight = weight + self.weight_diff
-        if self.use_deform:
-            offset = self.offset_l(avg_x)
-            out_l = deform_conv_3d(
-                    x,
-                    offset,
-                    weight,
-                    None, #bias == None
-                    self.stride,
-                    self.padding,
-                    self.dilation,
-                    self.groups,
-                    1,
-                    8,) # maybe need batch_size % ctx.im2col_step == 0
-        else:
-            out_l = super()._conv_forward(x, weight)
+        # if self.use_deform:
+        #     offset = self.offset_l(avg_x)
+        #     out_l = deform_conv_3d(
+        #             x,
+        #             offset,
+        #             weight,
+        #             None, #bias == None
+        #             self.stride,
+        #             self.padding,
+        #             self.dilation,
+        #             self.groups,
+        #             1,
+        #             8,) # maybe need batch_size % ctx.im2col_step == 0
+        # else:
+        #     out_l = super()._conv_forward(x, weight)
+        out_l = super()._conv_forward(x, weight)
         out = switch * out_s + (1 - switch) * out_l
         self.padding = ori_p
         self.dilation = ori_d
