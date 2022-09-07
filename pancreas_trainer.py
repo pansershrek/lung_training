@@ -164,7 +164,7 @@ class Trainer:
             ],
         ]
         anchors = np.array(anchors)
-        strides = [4, 8, 16]
+        strides = np.array([4, 8, 16])
 
         self.criterion = YoloV4Loss(
             anchors=anchors, strides=strides, iou_threshold_loss=0.5, dims=3
