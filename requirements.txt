@@ -6,3 +6,4 @@ tensorboardX
 pickleshare==0.7.5
 pycocotools
 nibabel==4.0.1
+pydicom
