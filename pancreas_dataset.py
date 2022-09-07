@@ -33,7 +33,9 @@ class PancreasDataset(Dataset):
                 data = [int(x) for x in f.read().strip().split(" ")]
                 self.meta_data[len(self.meta_data)] = {
                     "name": file,
-                    "class": data[0] - 1, # Classes should start from 0, but in carrent data it starts from 1
+                    "class": (
+                        data[0] - 1
+                    ),  # Classes should start from 0, but in carrent data it starts from 1
                     "bbox": data[1:]  # BBox format is [z1,y1,x1,z2,y2,x2]
                 }
                 self.classes.add(data[0])
@@ -144,7 +146,7 @@ class PancreasDataset(Dataset):
         ]
         anchors = np.array(anchors)
 
-        strides = [4, 8, 16]
+        strides = np.array([4, 8, 16])
         anchors_per_scale = 3
         d_xyz = 6
         d_cls = 2
