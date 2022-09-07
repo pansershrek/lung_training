@@ -75,7 +75,7 @@ class SpatialPyramidPooling(nn.Module):
         return features
 
     def __initialize_weights(self):
-        print("**" * 10, "Initing head_conv weights", "**" * 10)
+        #print("**" * 10, "Initing head_conv weights", "**" * 10)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.Conv3d):
@@ -179,7 +179,7 @@ class PANet(nn.Module):
         return [downstream_feature3, upstream_feature4, upstream_feature5]
 
     def __initialize_weights(self):
-        print("**" * 10, "Initing PANet weights", "**" * 10)
+        #print("**" * 10, "Initing PANet weights", "**" * 10)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.Conv3d):
@@ -198,7 +198,7 @@ class PredictNet(nn.Module):
     def __init__(self, feature_channels, target_channels, dims=2):
         super(PredictNet, self).__init__()
         nn_conv = nn.Conv3d if dims==3 else nn.Conv2d
-        
+
         self.predict_conv = nn.ModuleList([
             nn.Sequential(
                 Conv(feature_channels[i]//2, feature_channels[i], 3, dims=dims),
@@ -214,7 +214,7 @@ class PredictNet(nn.Module):
         return predicts
 
     def __initialize_weights(self):
-        print("**" * 10, "Initing PredictNet weights", "**" * 10)
+        #print("**" * 10, "Initing PredictNet weights", "**" * 10)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.Conv3d):
@@ -318,7 +318,7 @@ class MixLayer0Net(nn.Module):
         return self.forward_func(features, layer0_feature)
 
     def __initialize_weights(self):
-        print("**" * 10, "Initing MixLayer0Net weights", "**" * 10)
+        #print("**" * 10, "Initing MixLayer0Net weights", "**" * 10)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.Conv3d):

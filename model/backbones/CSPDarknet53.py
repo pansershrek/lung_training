@@ -260,7 +260,7 @@ class CSPDarknet53(nn.Module):
 
 
     def _initialize_weights(self):
-        print("**" * 10, "Initing CSPDarknet53 weights", "**" * 10)
+        #print("**" * 10, "Initing CSPDarknet53 weights", "**" * 10)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):

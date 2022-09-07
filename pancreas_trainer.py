@@ -196,6 +196,7 @@ class Trainer:
         for epoch in range(self.epochs):
             self.model.train()
             mloss = torch.zeros(5)
+            self.logger.info(f"Train epoch: {epoch}")
             for idx, data in enumerate(self.train_dataloader):
 
                 self.model.zero_grad()
