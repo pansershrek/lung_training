@@ -442,7 +442,7 @@ class Trainer:
             froc_x_dist, froc_y_dist = froc_take_max(froc_x_dist, froc_y_dist)
             area_dist = AUC(froc_x_dist, froc_y_dist, normalize=True)
 
-            froc_x, froc_y, sub_log_txt, cpm, sens_for_cpm = interpolate_FROC_data(
+            froc_x, froc_y, cpm, sens_for_cpm = interpolate_FROC_data(
                 data[..., 4],
                 data[..., 2],
                 max_fps=(8, 4, 2, 1, 0.5, 0.25, 0.125)
