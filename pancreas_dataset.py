@@ -89,7 +89,7 @@ class PancreasDataset(Dataset):
             image, self.image_size, "trilinear", align_corners=False
         )
         label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self._creat_label(
-            [np.array(bboxes),], self.image_size
+            [np.array(bboxes + [self.meta_data[idx]["class"]])], self.image_size
         )
         output = {
             "names": self.meta_data[idx]["name"],
