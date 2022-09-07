@@ -414,13 +414,13 @@ class Trainer:
             PERF_per_thre.append(
                 [
                     score_hit_thre,
-                    None,  #total_pass,
+                    len(gt_lut),  #total_pass,
                     sensitivity,  # ---using iou---
                     precision,  # ---using iou---
-                    None,  #sum_FP / total_pass,  # ---using iou---
+                    sum_FP / len(gt_lut),  #sum_FP / total_pass,  # ---using iou---
                     sensitivity_dist,  # ---using dist---
                     precision_dist,  # ---using dist---
-                    None  #sum_FP_dist / total_pass
+                    sum_FP_dist / len(gt_lut)  #sum_FP_dist / total_pass
                 ],  # ---using dist---
             )
 
