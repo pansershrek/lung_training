@@ -33,7 +33,7 @@ class PancreasDataset(Dataset):
                 data = f.read().strip().split(" ")
                 self.meta_data[len(self.meta_data)] = {
                     "name": file,
-                    "class": data[0],
+                    "class": data[0] - 1, # Classes should start from 0, but in carrent data it starts from 1
                     "bbox": data[1:]  # BBox format is [z1,y1,x1,z2,y2,x2]
                 }
                 self.classes.add(data[0])
@@ -84,12 +84,15 @@ class PancreasDataset(Dataset):
             return output
         image_name = self.meta_data[idx]["name"].replace("txt", "nii.gz")
         image = nib.load(os.path.join(self.images_dir, image_name)).get_fdata()
-        bboxes = self.scale_bbox(image.shape, self.image_size,  self.meta_data[idx]["bbox"])
+        bboxes = self.scale_bbox(
+            image.shape, self.image_size, self.meta_data[idx]["bbox"]
+        )
         image = utils.resize_without_pad(
             image, self.image_size, "trilinear", align_corners=False
         )
         label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self._creat_label(
-            [np.array(bboxes + [self.meta_data[idx]["class"]])], self.image_size
+            [np.array(bboxes + [self.meta_data[idx]["class"]])],
+            self.image_size
         )
         output = {
             "names": self.meta_data[idx]["name"],
