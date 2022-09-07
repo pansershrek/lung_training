@@ -16,7 +16,7 @@ class PancreasDataset(Dataset):
         self,
         images_dir,
         labels_dir,
-        image_size=(640, 640, 640),
+        image_size=(128, 128, 128),
         cache_size=40
     ):
         self.images_dir = images_dir
