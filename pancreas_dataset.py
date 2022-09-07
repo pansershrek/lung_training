@@ -96,9 +96,11 @@ class PancreasDataset(Dataset):
             [np.array(bboxes + [self.meta_data[idx]["class"]])],
             self.image_size
         )
+        image = torch.FloatTensor(image)
+        image = image.view(1, *image.shape)
         output = {
             "names": self.meta_data[idx]["name"],
-            "images": torch.FloatTensor(image),
+            "images": image,
             "bboxes": torch.FloatTensor(bboxes),
             "classes": self.meta_data[idx]["class"],
             "label_sbbox": torch.FloatTensor(label_sbbox),
