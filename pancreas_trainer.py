@@ -279,7 +279,7 @@ class Trainer:
                     data["images"]
                 )
 
-                gt_lut[data["names"]] = data["bbox"]
+                gt_lut[data["names"]] = data["bboxes"]
                 pred_lut[data["names"]] = bboxes_prd
         (
             area_dist, area_iou, sub_log_txt, cpm_dist, cpm, max_sens_dist,
