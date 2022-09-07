@@ -130,7 +130,7 @@ class Trainer:
         )
         self.val_dataloader = DataLoader(
             val_dataset,
-            batch_size=batch_size,
+            batch_size=1,
             num_workers=1,
             shuffle=False,
             pin_memory=False
@@ -271,15 +271,14 @@ class Trainer:
 
         gt_lut = {}
         pred_lut = {}
-        self.model.eval()
         with torch.no_grad():
             for idx, data in enumerate(self.val_dataloader):
                 bboxes_prd, box_raw_data, bboxes_prd_no_nms = self._get_bbox(
-                    data["images"][0]
+                    data["images"]
                 )
 
-                gt_lut[data["names"][0]] = data["bbox"]
-                pred_lut[data["names"][0]] = bboxes_prd
+                gt_lut[data["names"]] = data["bbox"]
+                pred_lut[data["names"]] = bboxes_prd
         (
             area_dist, area_iou, sub_log_txt, cpm_dist, cpm,
             max_sens_dist, max_sens_iou, fp_bboxes_all_pid
