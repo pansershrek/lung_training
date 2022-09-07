@@ -11,6 +11,7 @@ modified from: https://github.com/zhanghang1989/ResNeSt/blob/master/resnest/torc
 
 import torch
 try:
+    import sys
     sys.path.append("/workspace/pancreas")
     from .resnet import ResNet, Bottleneck
     import config.yolov4_config as cfg
