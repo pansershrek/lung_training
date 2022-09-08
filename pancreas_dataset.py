@@ -93,7 +93,7 @@ class PancreasDataset(Dataset):
             image, self.image_size, "trilinear", align_corners=False
         )
         label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self._creat_label(
-            [np.array(bboxes + [self.meta_data[idx]["class"]])],
+            [np.array(bboxes + [self.meta_data[idx]["class"], 1, 1])],
             self.image_size
         )
         image = torch.FloatTensor(image)
