@@ -34,12 +34,12 @@ class PancreasDataset(Dataset):
                 self.meta_data[len(self.meta_data)] = {
                     "name": file,
                     "class": (
-                        data[0] - 1
+                        data[0]
                     ),  # Classes should start from 0, but in carrent data it starts from 1
                     "bbox": data[1:]  # BBox format is [z1,y1,x1,z2,y2,x2]
                 }
                 self.classes.add(data[0])
-        self.num_classes = len(self.classes)
+        self.num_classes = 2
 
     def __len__(self):
         return len(self.meta_data)

@@ -34,7 +34,7 @@ class BuildModel(nn.Module):
 
         self.__anchors = torch.FloatTensor(anchors)
         self.__strides = torch.FloatTensor([4, 8, 16])
-        self.__nC = 1
+        self.__nC = 2
         self.__out_channel = 3 * (self.__nC + 7)
 
         self.__yolov4 = YOLOv4(
