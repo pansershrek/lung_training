@@ -53,7 +53,7 @@ def main():
     )
     parser.add_argument(
         "--mode",
-        default="train",
+        default="inference",
         help="Model mode. There two options: train and inference"
     )
     args = parser.parse_args()
