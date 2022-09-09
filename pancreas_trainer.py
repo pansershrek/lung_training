@@ -118,6 +118,7 @@ class Trainer:
         epochs,
         batch_size=4,
         opt_level="O0",
+        inference_model_path="",
         val_interval=1,
         seed=1717,
     ):
@@ -150,6 +151,7 @@ class Trainer:
         self.writer = writer
         self.logger = logger
         self.epochs = epochs
+        self.inference_model_path = inference_model_path
         self.val_interval = val_interval
         self.opt_level = opt_level
         self.image_size = val_dataset.image_size
@@ -199,6 +201,10 @@ class Trainer:
             chkpt,
             os.path.join(self.checkpoint_save_dir, f'checkpoint_{epoch}.pt')
         )
+
+    def _load_model_weights(self):
+        chkpt = torch.load(self.inference_model_path)
+        self.model.load_state_dict(chkpt["model"])
 
     def train(self):
         self.logger.info("Start to train model")
@@ -312,7 +318,7 @@ class Trainer:
 
     def inference(self):
         self.logger.info("start to inferene model")
-
+        self._load_model_weights()
         with open(self.inference_to_store, "w") as f:
             with torch.no_grad():
                 for idx, data in enumerate(self.inference_dataloader):

@@ -57,6 +57,11 @@ def main():
         help="Model mode. There are two options: train and inference"
     )
     parser.add_argument(
+        "--inference-model-path",
+        default="/pancreas/checkpoint_save_dir/checkpoint_43.pt",
+        help="Path to inference model"
+    )
+    parser.add_argument(
         "--opt-level",
         default="O0",
         help=(
@@ -84,7 +89,7 @@ def main():
     trainer = Trainer(
         train_dataset, val_dataset, inference_dataset,
         args.checkpoint_save_dir, writer, logger, args.device, args.epochs,
-        args.batch_size, args.opt_level
+        args.batch_size, args.opt_level, args.inference_model_path
     )
     if args.mode == "inference":
         trainer.inference()
