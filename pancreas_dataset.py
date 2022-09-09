@@ -100,7 +100,7 @@ class PancreasDataset(Dataset):
             return output
         image_name = self.meta_data[idx]["name"].replace("txt", "nii.gz")
         image = nib.load(os.path.join(self.images_dir, image_name)).get_fdata()
-        original_size = self.image.shape
+        original_size = image.shape
         bboxes = None
         if self.meta_data[idx]["bbox"] is not None:
             bboxes = self.scale_bbox(
