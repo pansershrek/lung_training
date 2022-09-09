@@ -325,15 +325,29 @@ class Trainer:
                 bboxes_prd, box_raw_data, bboxes_prd_no_nms = self._get_bbox(
                     data["images"]
                 )
-                #TODO scale bboxes to original size
-                # bboxes_prd = self.scale_function(
-                #     self.image_size, data["original_size"][0], bboxes_prd
-                # )
+                bboxes_prd = self._convert_bbox_for_inference(
+                    bboxes_prd, data["original_size"][0]
+                )
                 with open(
                     os.path.join(self.inference_to_store, data["names"][0]),
                     "w"
                 ) as f:
-                    print(bboxes_prd, file=f, flush=True)
+                    for bbox in bboxes_prd:
+                        print(*bbox, file=f, flush=True)
+
+    def _convert_bbox_for_inference(self, bboxes, original_size):
+        converted_bboxes = []
+        for bbox in bboxes:
+            x_tmp = [0 for x in range(6)]
+            x_tmp[0] = (2.0 * bbox[0] - bbox[3]) / 2.0
+            x_tmp[3] = (2.0 * bbox[0] + bbox[3]) / 2.0
+            x_tmp[1] = (2.0 * bbox[1] - bbox[4]) / 2.0
+            x_tmp[4] = (2.0 * bbox[1] + bbox[4]) / 2.0
+            x_tmp[2] = (2.0 * bbox[2] - bbox[5]) / 2.0
+            x_tmp[5] = (2.0 * bbox[2] + bbox[5]) / 2.0
+            x_tmp = self.scale_bbox(self.image_size, original_size, x_tmp)
+            converted_bboxes.append(x_tmp + [bbox[6], 1])
+        return converted_bboxes
 
     def _get_bbox(self, image):
         bboxes, box_raw_data = self._predict(image)
