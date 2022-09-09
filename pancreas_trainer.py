@@ -345,7 +345,7 @@ class Trainer:
             x_tmp[4] = (2.0 * bbox[1] + bbox[4]) / 2.0
             x_tmp[2] = (2.0 * bbox[2] - bbox[5]) / 2.0
             x_tmp[5] = (2.0 * bbox[2] + bbox[5]) / 2.0
-            x_tmp = self.scale_bbox(self.image_size, original_size, x_tmp)
+            x_tmp = self.scale_function(self.image_size, original_size, x_tmp)
             converted_bboxes.append(x_tmp + [bbox[6], 1])
         return converted_bboxes
 
