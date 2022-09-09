@@ -119,6 +119,7 @@ class PancreasDataset(Dataset):
                 self.image_size
             )
             eval_flag = 0
+            bboxes = []
         image = torch.FloatTensor(image)
         image = image.view(1, *image.shape)
         output = {
