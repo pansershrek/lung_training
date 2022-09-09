@@ -110,6 +110,7 @@ class Trainer:
         self,
         train_dataset,
         val_dataset,
+        inference_dataset,
         checkpoint_save_dir,
         writer,
         logger,
@@ -135,6 +136,15 @@ class Trainer:
             shuffle=False,
             pin_memory=False
         )
+        self.inference_dataloader = DataLoader(
+            inference_dataset,
+            batch_size=1,
+            num_workers=1,
+            shuffle=False,
+            pin_memory=False
+        )
+        self.inference_to_store = inference_dataset.labels_dir
+        self.scale_function = inference_dataset.scale_bbox
         self.checkpoint_save_dir = checkpoint_save_dir
         self.writer = writer
         self.logger = logger
@@ -199,7 +209,7 @@ class Trainer:
             self.logger.info(f"Train epoch: {epoch}")
             for idx, data in enumerate(self.train_dataloader):
 
-                self.scheduler.step(len(self.train_dataloader)*epoch + idx)
+                self.scheduler.step(len(self.train_dataloader) * epoch + idx)
 
                 p, p_d = self.model(data["images"].to(self.device))
 
@@ -218,7 +228,6 @@ class Trainer:
 
                 self.optimizer.step()
                 self.optimizer.zero_grad()
-
 
                 conf_data = p_d[0][..., 6:7].detach().cpu().numpy().flatten()
                 pr999_p_conf = np.sort(conf_data)[-8]
@@ -298,6 +307,21 @@ class Trainer:
         return (
             area_dist, area_iou, cpm_dist, cpm, max_sens_dist, max_sens_iou
         )
+
+    def inference(self):
+        self.logger.info("start to inferene model")
+
+        with open(self.inference_to_store, "w") as f:
+            with torch.no_grad():
+                for idx, data in enumerate(self.inference_dataloader):
+                    bboxes_prd, box_raw_data, bboxes_prd_no_nms = self._get_bbox(
+                        data["images"]
+                    )
+                    #TODO scale bboxes to original size
+                    # bboxes_prd = self.scale_function(
+                    #     self.image_size, data["original_size"][0], bboxes_prd
+                    # )
+                    print(bboxes_prd, file=f, flush=True)
 
     def _get_bbox(self, image):
         bboxes, box_raw_data = self._predict(image)
@@ -420,7 +444,8 @@ class Trainer:
                     len(gt_lut),  #total_pass,
                     sensitivity,  # ---using iou---
                     precision,  # ---using iou---
-                    sum_FP / len(gt_lut),  #sum_FP / total_pass,  # ---using iou---
+                    #sum_FP / total_pass,  # ---using iou---
+                    sum_FP / len(gt_lut),
                     sensitivity_dist,  # ---using dist---
                     precision_dist,  # ---using dist---
                     sum_FP_dist / len(gt_lut)  #sum_FP_dist / total_pass

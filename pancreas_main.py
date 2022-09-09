@@ -35,11 +35,26 @@ def main():
         default="/pancreas/checkpoint_save_dir",
         help="Path to checkpoint's saves dir"
     )
+    parser.add_argument(
+        "--images-path-inference",
+        default="/pancreas/inference/imagesTr",
+        help="Path to inference images"
+    )
+    parser.add_argument(
+        "--bbox-path-inference",
+        default="/pancreas/inference/bbox3d",
+        help="Path to store inference bboxes"
+    )
     parser.add_argument("--epochs", default=100, help="Epochs number")
     parser.add_argument("--batch-size", default=4, help="Batch size")
     parser.add_argument("--device", default="cuda:0", help="Device")
     parser.add_argument(
         "--log-path", default="/pancreas/logs", help="Path for logs"
+    )
+    parser.add_argument(
+        "--mode",
+        default="train",
+        help="Model mode. There two options: train and inference"
     )
     args = parser.parse_args()
 
@@ -47,6 +62,9 @@ def main():
         args.images_path_train, args.bbox_path_train
     )
     val_dataset = PancreasDataset(args.images_path_val, args.bbox_path_val)
+    inference_dataset = PancreasDataset(
+        args.images_path_inference, args.bbox_path_inference
+    )
 
     writer = SummaryWriter(log_dir=args.log_path)
     logger = Logger(
@@ -56,10 +74,14 @@ def main():
     ).get_log()
 
     trainer = Trainer(
-        train_dataset, val_dataset, args.checkpoint_save_dir, writer, logger,
-        args.device, args.epochs, args.batch_size
+        train_dataset, val_dataset, inference_dataset,
+        args.checkpoint_save_dir, writer, logger, args.device, args.epochs,
+        args.batch_size
     )
-    trainer.train()
+    if args.mode == "inference":
+        trainer.inference()
+    else:
+        trainer.train()
 
 
 if __name__ == "__main__":

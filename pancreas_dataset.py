@@ -39,6 +39,20 @@ class PancreasDataset(Dataset):
                     "bbox": data[1:]  # BBox format is [z1,y1,x1,z2,y2,x2]
                 }
                 self.classes.add(data[0])
+        for file in os.listdir(self.images_dir):
+            name = file.replace("nii.gz", "txt")
+            flag = False
+            for value in self.meta_data.values():
+                if name == value["name"]:
+                    flag = True
+                    break
+            if not flag:
+                self.meta_data[len(self.meta_data)] = {
+                    "name": name,
+                    "class": None,
+                    "bbox": None,
+                }
+
         self.num_classes = 2
 
     def __len__(self):
@@ -86,16 +100,25 @@ class PancreasDataset(Dataset):
             return output
         image_name = self.meta_data[idx]["name"].replace("txt", "nii.gz")
         image = nib.load(os.path.join(self.images_dir, image_name)).get_fdata()
-        bboxes = self.scale_bbox(
-            image.shape, self.image_size, self.meta_data[idx]["bbox"]
-        )
+        original_size = self.image.shape
+        bboxes = None
+        if self.meta_data[idx]["bbox"] is not None:
+            bboxes = self.scale_bbox(
+                image.shape, self.image_size, self.meta_data[idx]["bbox"]
+            )
         image = utils.resize_without_pad(
             image, self.image_size, "trilinear", align_corners=False
         )
-        label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self._creat_label(
-            [np.array(bboxes + [self.meta_data[idx]["class"], 1, 1])],
-            self.image_size
+        label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = (
+            [], [], [], [], [], []
         )
+        eval_flag = 1
+        if bboxes is not None:
+            label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = self._creat_label(
+                [np.array(bboxes + [self.meta_data[idx]["class"], 1, 1])],
+                self.image_size
+            )
+            eval_flag = 0
         image = torch.FloatTensor(image)
         image = image.view(1, *image.shape)
         output = {
@@ -109,6 +132,8 @@ class PancreasDataset(Dataset):
             "sbboxes": torch.FloatTensor(sbboxes),
             "mbboxes": torch.FloatTensor(mbboxes),
             "lbboxes": torch.FloatTensor(lbboxes),
+            "original_size": torch.from_numpy(original_size),
+            "eval_flag": torch.FloatTensor(eval_flag),
         }
 
         self.cacher.set(idx, output)
