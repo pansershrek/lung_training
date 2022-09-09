@@ -49,7 +49,7 @@ class PancreasDataset(Dataset):
             if not flag:
                 self.meta_data[len(self.meta_data)] = {
                     "name": name,
-                    "class": None,
+                    "class": -1,
                     "bbox": None,
                 }
 
