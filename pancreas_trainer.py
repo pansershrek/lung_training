@@ -144,7 +144,7 @@ class Trainer:
 
         self.model = BuildModel(weight_path=None, resume=False, dims=3)
         self.model = self.model.to(self.device)
-        self.optimizer = optim.SGD(self.model.parameters(), lr=5e-5)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=5e-3)
 
         anchors = [
             [
@@ -172,7 +172,7 @@ class Trainer:
         self.scheduler = cosine_lr_scheduler.CosineDecayLR(
             self.optimizer,
             T_max=self.epochs * len(self.train_dataloader),
-            lr_init=5e-5,
+            lr_init=5e-3,
             lr_min=5e-8,
             warmup=5 * len(self.train_dataloader)
         )
@@ -199,7 +199,7 @@ class Trainer:
             self.logger.info(f"Train epoch: {epoch}")
             for idx, data in enumerate(self.train_dataloader):
 
-                self.model.zero_grad()
+                self.scheduler.step(len(self.train_dataloader)*epoch + idx)
 
                 p, p_d = self.model(data["images"].to(self.device))
 
@@ -217,6 +217,8 @@ class Trainer:
                     scaled_loss.backward()
 
                 self.optimizer.step()
+                self.optimizer.zero_grad()
+
 
                 conf_data = p_d[0][..., 6:7].detach().cpu().numpy().flatten()
                 pr999_p_conf = np.sort(conf_data)[-8]
