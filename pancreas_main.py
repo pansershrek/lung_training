@@ -53,8 +53,16 @@ def main():
     )
     parser.add_argument(
         "--mode",
-        default="inference",
-        help="Model mode. There two options: train and inference"
+        default="train",
+        help="Model mode. There are two options: train and inference"
+    )
+    parser.add_argument(
+        "--opt-level",
+        default="O0",
+        help=(
+            "Model optimization level. "
+            "There are two options: O1 and O0 (first char is big `o`.)"
+        )
     )
     args = parser.parse_args()
 
@@ -76,7 +84,7 @@ def main():
     trainer = Trainer(
         train_dataset, val_dataset, inference_dataset,
         args.checkpoint_save_dir, writer, logger, args.device, args.epochs,
-        args.batch_size
+        args.batch_size, args.opt_level
     )
     if args.mode == "inference":
         trainer.inference()

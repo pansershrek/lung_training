@@ -117,6 +117,7 @@ class Trainer:
         device,
         epochs,
         batch_size=4,
+        opt_level="O0",
         val_interval=1,
         seed=1717,
     ):
@@ -150,6 +151,7 @@ class Trainer:
         self.logger = logger
         self.epochs = epochs
         self.val_interval = val_interval
+        self.opt_level = opt_level
         self.image_size = val_dataset.image_size
 
         self.model = BuildModel(weight_path=None, resume=False, dims=3)
@@ -201,7 +203,7 @@ class Trainer:
     def train(self):
         self.logger.info("Start to train model")
         self.model, self.optimizer = amp.initialize(
-            self.model, self.optimizer, opt_level='O1'
+            self.model, self.optimizer, opt_level=self.opt_level
         )
         for epoch in range(self.epochs):
             self.model.train()
