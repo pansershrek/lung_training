@@ -317,18 +317,22 @@ class Trainer:
         )
 
     def inference(self):
-        self.logger.info("start to inferene model")
+        self.logger.info("start to inference model")
         self._load_model_weights()
-        with open(self.inference_to_store, "w") as f:
-            with torch.no_grad():
-                for idx, data in enumerate(self.inference_dataloader):
-                    bboxes_prd, box_raw_data, bboxes_prd_no_nms = self._get_bbox(
-                        data["images"]
-                    )
-                    #TODO scale bboxes to original size
-                    # bboxes_prd = self.scale_function(
-                    #     self.image_size, data["original_size"][0], bboxes_prd
-                    # )
+
+        with torch.no_grad():
+            for idx, data in enumerate(self.inference_dataloader):
+                bboxes_prd, box_raw_data, bboxes_prd_no_nms = self._get_bbox(
+                    data["images"]
+                )
+                #TODO scale bboxes to original size
+                # bboxes_prd = self.scale_function(
+                #     self.image_size, data["original_size"][0], bboxes_prd
+                # )
+                with open(
+                    os.path.join(self.inference_to_store, data["names"][0]),
+                    "w"
+                ) as f:
                     print(bboxes_prd, file=f, flush=True)
 
     def _get_bbox(self, image):
