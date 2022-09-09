@@ -134,7 +134,7 @@ class PancreasDataset(Dataset):
             "sbboxes": torch.FloatTensor(sbboxes),
             "mbboxes": torch.FloatTensor(mbboxes),
             "lbboxes": torch.FloatTensor(lbboxes),
-            "original_size": torch.from_numpy(original_size),
+            "original_size": torch.FloatTensor(original_size),
             "eval_flag": torch.FloatTensor(eval_flag),
         }
 
