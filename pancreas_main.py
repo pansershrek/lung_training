@@ -37,7 +37,7 @@ def main():
     )
     parser.add_argument("--epochs", default=300, help="Epochs number")
     parser.add_argument("--batch-size", default=4, help="Batch size")
-    parser.add_argument("--device", default="cuda:1", help="Device")
+    parser.add_argument("--device", default="cuda:0", help="Device")
     parser.add_argument(
         "--log-path", default="/pancreas/logs", help="Path for logs"
     )
