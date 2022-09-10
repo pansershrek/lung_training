@@ -331,7 +331,7 @@ class Trainer:
                 ) as f:
                     for bbox in bboxes_prd:
                         bbox_tmp = self.scale_function(
-                            self.image_size, data["original_size"], bbox[:6]
+                            self.image_size, data["original_size"][0], bbox[:6]
                         )
                         print(*bbox_tmp, bbox[6], bbox[7], file=f, flush=True)
 
