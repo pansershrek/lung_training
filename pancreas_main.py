@@ -53,12 +53,12 @@ def main():
     )
     parser.add_argument(
         "--mode",
-        default="train",
+        default="inference",
         help="Model mode. There are two options: train and inference"
     )
     parser.add_argument(
         "--inference-model-path",
-        default="/pancreas/checkpoint_save_dir/checkpoint_43.pt",
+        default="/pancreas/checkpoint_save_dir/checkpoint_37.pt",
         help="Path to inference model"
     )
     parser.add_argument(
@@ -66,7 +66,7 @@ def main():
         default="O0",
         help=(
             "Model optimization level. "
-            "There are two options: O1 and O0 (first char is big `o`.)"
+            "There are two options: O0, O1, O2 and O3 (first char is big `o`.)"
         )
     )
     args = parser.parse_args()

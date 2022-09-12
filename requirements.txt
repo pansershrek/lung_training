@@ -1,6 +1,6 @@
-numpy==1.17.3
+numpy>=1.20
 opencv-python
-tqdm==4.31.1
+tqdm
 argparse
 tensorboardX
 pickleshare==0.7.5
@@ -8,4 +8,4 @@ pycocotools
 nibabel==4.0.1
 pydicom
 monai
-tensorboard-plugin-3d
+#tensorboard-plugin-3d

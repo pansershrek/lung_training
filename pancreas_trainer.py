@@ -328,7 +328,7 @@ class Trainer:
                     data["images"]
                 )
                 image = utils.resize_without_pad(
-                    data["images"][0],
+                    data["images"][0].view(image_size),
                     data["original_size"][0],
                     "trilinear",
                     align_corners=False
