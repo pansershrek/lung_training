@@ -333,6 +333,7 @@ class Trainer:
                     "trilinear",
                     align_corners=False
                 )
+                image = torch.tensor(image)
                 plot_2d_or_3d_image(
                     data=image.unsqueeze(0),
                     step=0,
