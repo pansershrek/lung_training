@@ -345,7 +345,7 @@ class Trainer:
                     self.image_size, data["original_size"][0],
                     data["bboxes"][0][:6]
                 )
-                bbox_original = torch.zeros_like(data["images"][0])
+                bbox_original = torch.zeros_like(image)
                 bbox_original[bboxes[0]:bboxes[3], bboxes[1]:bboxes[4],
                               bboxes[2]:bboxes[5]] = 1
                 plot_2d_or_3d_image(
@@ -365,7 +365,7 @@ class Trainer:
                             self.image_size, data["original_size"][0], bbox[:6]
                         )
                         if idx_bbox == 0:
-                            bbox_predict = torch.zeros_like(data["images"][0])
+                            bbox_predict = torch.zeros_like(image)
                             bbox_predict[bbox_tmp[0]:bbox_tmp[3],
                                          bbox_tmp[1]:bbox_tmp[4],
                                          bbox_tmp[2]:bbox_tmp[5]] = 1
