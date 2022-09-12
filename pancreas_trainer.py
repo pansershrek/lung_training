@@ -334,7 +334,7 @@ class Trainer:
                     align_corners=False
                 )
                 plot_2d_or_3d_image(
-                    data=image.view(1, *image.shape),
+                    data=image.view((1, *image.shape)),
                     step=0,
                     writer=self.writer,
                     frame_dim=-1,
@@ -348,7 +348,7 @@ class Trainer:
                 bbox_original[bboxes[0]:bboxes[3], bboxes[1]:bboxes[4],
                               bboxes[2]:bboxes[5]] = 1
                 plot_2d_or_3d_image(
-                    data=bbox_original.view(1, *bbox_original.shape),
+                    data=bbox_original.view((1, *bbox_original.shape)),
                     step=0,
                     writer=self.writer,
                     frame_dim=-1,
@@ -369,7 +369,7 @@ class Trainer:
                                          bbox_tmp[1]:bbox_tmp[4],
                                          bbox_tmp[2]:bbox_tmp[5]] = 1
                             plot_2d_or_3d_image(
-                                data=bbox_predict.view(1, *bbox_predict.shape),
+                                data=bbox_predict.view((1, *bbox_predict.shape)),
                                 step=0,
                                 writer=self.writer,
                                 frame_dim=-1,
