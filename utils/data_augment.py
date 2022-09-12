@@ -35,7 +35,7 @@ class RandomCrop(object):
 
     def __call__(self, img, bboxes):
         if random.random() < self.p:
-            _, h_img, w_img,  = img.shape
+            _, h_img, w_img  = img.shape
 
             max_bbox = np.concatenate([np.min(bboxes[:, 1:3], axis=0), np.max(bboxes[:, 4:6], axis=0)], axis=-1)
             max_l_trans = max_bbox[0]
@@ -45,8 +45,8 @@ class RandomCrop(object):
 
             crop_xmin = max(0, int(max_bbox[0] - random.uniform(0, max_l_trans)))
             crop_ymin = max(0, int(max_bbox[1] - random.uniform(0, max_u_trans)))
-            crop_xmax = max(w_img, int(max_bbox[2] + random.uniform(0, max_r_trans)))
-            crop_ymax = max(h_img, int(max_bbox[3] + random.uniform(0, max_d_trans)))
+            crop_xmax = min(w_img, int(max_bbox[2] + random.uniform(0, max_r_trans)))
+            crop_ymax = min(h_img, int(max_bbox[3] + random.uniform(0, max_d_trans)))
 
             img = img[:, crop_ymin : crop_ymax, crop_xmin : crop_xmax]
 
