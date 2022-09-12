@@ -25,7 +25,7 @@ class RandomVerticalFlip(object):
             _, _,  h_img = img.shape
             # img = np.fliplr(img)
             img = img[:, :, ::-1]
-            bboxes[:, [2, 5]] = w_img - bboxes[:, [5, 2]]
+            bboxes[:, [2, 5]] = h_img - bboxes[:, [5, 2]]
         return img, bboxes
 
 
@@ -35,9 +35,9 @@ class RandomCrop(object):
 
     def __call__(self, img, bboxes):
         if random.random() < self.p:
-            h_img, w_img, _ = img.shape
+            _, h_img, w_img,  = img.shape
 
-            max_bbox = np.concatenate([np.min(bboxes[:, 0:2], axis=0), np.max(bboxes[:, 2:4], axis=0)], axis=-1)
+            max_bbox = np.concatenate([np.min(bboxes[:, 1:3], axis=0), np.max(bboxes[:, 4:6], axis=0)], axis=-1)
             max_l_trans = max_bbox[0]
             max_u_trans = max_bbox[1]
             max_r_trans = w_img - max_bbox[2]
