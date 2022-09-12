@@ -74,9 +74,11 @@ def main():
     train_dataset = PancreasDataset(
         args.images_path_train, args.bbox_path_train
     )
-    val_dataset = PancreasDataset(args.images_path_val, args.bbox_path_val)
+    val_dataset = PancreasDataset(
+        args.images_path_val, args.bbox_path_val, validate=True
+    )
     inference_dataset = PancreasDataset(
-        args.images_path_inference, args.bbox_path_inference
+        args.images_path_inference, args.bbox_path_inference, validate=True
     )
 
     writer = SummaryWriter(log_dir=args.log_path)

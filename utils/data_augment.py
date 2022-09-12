@@ -48,10 +48,10 @@ class RandomCrop(object):
             crop_xmax = max(w_img, int(max_bbox[2] + random.uniform(0, max_r_trans)))
             crop_ymax = max(h_img, int(max_bbox[3] + random.uniform(0, max_d_trans)))
 
-            img = img[crop_ymin : crop_ymax, crop_xmin : crop_xmax]
+            img = img[:, crop_ymin : crop_ymax, crop_xmin : crop_xmax]
 
-            bboxes[:, [0, 2]] = bboxes[:, [0, 2]] - crop_xmin
-            bboxes[:, [1, 3]] = bboxes[:, [1, 3]] - crop_ymin
+            bboxes[:, [1, 4]] = bboxes[:, [1, 4]] - crop_xmin
+            bboxes[:, [2, 5]] = bboxes[:, [2, 5]] - crop_ymin
         return img, bboxes
 
 

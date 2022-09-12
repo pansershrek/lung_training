@@ -16,6 +16,7 @@ class PancreasDataset(Dataset):
         self,
         images_dir,
         labels_dir,
+        validate=False,
         image_size=(128, 128, 128),
         cache_size=40
     ):
@@ -24,6 +25,8 @@ class PancreasDataset(Dataset):
 
         self.meta_data = {}
         self.classes = set()
+
+        self.validate = validate
 
         self.cacher = utils.LRUCache(cache_size=cache_size)
         self.image_size = image_size
@@ -103,11 +106,17 @@ class PancreasDataset(Dataset):
         original_size = image.shape
         bboxes = None
         if self.meta_data[idx]["bbox"] is not None:
-            image, bboxes = self.__data_aug(image, torch.tensor(self.meta_data[idx]["bbox"]).unsqueeze(0))
-            bboxes = [x for x in bboxes[0]]
-            bboxes = self.scale_bbox(
-                image.shape, self.image_size, bboxes
-            )
+            if not self.validate:
+                image, bboxes = self.__data_aug(
+                    image,
+                    torch.tensor(self.meta_data[idx]["bbox"]).unsqueeze(0)
+                )
+                bboxes = [x for x in bboxes[0]]
+                bboxes = self.scale_bbox(image.shape, self.image_size, bboxes)
+            else:
+                bboxes = self.scale_bbox(
+                    image.shape, self.image_size, self.meta_data[idx]["bbox"]
+                )
         image = utils.resize_without_pad(
             image, self.image_size, "trilinear", align_corners=False
         )
@@ -144,8 +153,12 @@ class PancreasDataset(Dataset):
         return output
 
     def __data_aug(self, img, bboxes):
-        img, bboxes = dataAug.RandomHorizontalFlip()(np.copy(img), np.copy(bboxes))
-        img, bboxes = dataAug.RandomVerticalFlip()(np.copy(img), np.copy(bboxes))
+        img, bboxes = dataAug.RandomHorizontalFlip()(
+            np.copy(img), np.copy(bboxes)
+        )
+        img, bboxes = dataAug.RandomVerticalFlip()(
+            np.copy(img), np.copy(bboxes)
+        )
         #img, bboxes = dataAug.RandomCrop()(np.copy(img), np.copy(bboxes))
         #img, bboxes = dataAug.RandomAffine()(np.copy(img), np.copy(bboxes))
 
