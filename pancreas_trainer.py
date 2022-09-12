@@ -159,7 +159,7 @@ class Trainer:
 
         self.model = BuildModel(weight_path=None, resume=False, dims=3)
         self.model = self.model.to(self.device)
-        self.optimizer = optim.Adam(self.model.parameters(), lr=5e-2)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=5e-3)
 
         anchors = [
             [
@@ -187,7 +187,7 @@ class Trainer:
         self.scheduler = cosine_lr_scheduler.CosineDecayLR(
             self.optimizer,
             T_max=self.epochs * len(self.train_dataloader),
-            lr_init=5e-2,
+            lr_init=5e-3,
             lr_min=5e-8,
             warmup=5 * len(self.train_dataloader)
         )
