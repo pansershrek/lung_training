@@ -53,7 +53,7 @@ def main():
     )
     parser.add_argument(
         "--mode",
-        default="inference",
+        default="train",
         help="Model mode. There are two options: train and inference"
     )
     parser.add_argument(
@@ -63,7 +63,7 @@ def main():
     )
     parser.add_argument(
         "--opt-level",
-        default="O0",
+        default="O1",
         help=(
             "Model optimization level. "
             "There are two options: O0, O1, O2 and O3 (first char is big `o`.)"

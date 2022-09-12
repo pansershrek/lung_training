@@ -103,6 +103,7 @@ class PancreasDataset(Dataset):
         original_size = image.shape
         bboxes = None
         if self.meta_data[idx]["bbox"] is not None:
+            image, bboxes = self.__data_aug(image, bboxes)
             bboxes = self.scale_bbox(
                 image.shape, self.image_size, self.meta_data[idx]["bbox"]
             )
@@ -140,6 +141,13 @@ class PancreasDataset(Dataset):
 
         self.cacher.set(idx, output)
         return output
+
+    def __data_aug(self, img, bboxes):
+        img, bboxes = dataAug.RandomHorizontalFilp()(np.copy(img), np.copy(bboxes))
+        img, bboxes = dataAug.RandomCrop()(np.copy(img), np.copy(bboxes))
+        img, bboxes = dataAug.RandomAffine()(np.copy(img), np.copy(bboxes))
+
+        return img, bboxes
 
     def _creat_label(self, bboxes, img_size):
         """

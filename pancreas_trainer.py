@@ -189,7 +189,7 @@ class Trainer:
             self.optimizer,
             T_max=self.epochs * len(self.train_dataloader),
             lr_init=5e-3,
-            lr_min=5e-8,
+            lr_min=5e-5,
             warmup=5 * len(self.train_dataloader)
         )
 
