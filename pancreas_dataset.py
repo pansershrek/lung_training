@@ -103,9 +103,10 @@ class PancreasDataset(Dataset):
         original_size = image.shape
         bboxes = None
         if self.meta_data[idx]["bbox"] is not None:
-            image, bboxes = self.__data_aug(image, bboxes)
+            image, bboxes = self.__data_aug(image, torch.tensor(self.meta_data[idx]["bbox"]).unsqueeze(0))
+            bboxes = [x for x in bboxes[0]]
             bboxes = self.scale_bbox(
-                image.shape, self.image_size, self.meta_data[idx]["bbox"]
+                image.shape, self.image_size, bboxes
             )
         image = utils.resize_without_pad(
             image, self.image_size, "trilinear", align_corners=False
