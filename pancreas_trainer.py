@@ -335,11 +335,11 @@ class Trainer:
                 )
                 image = torch.tensor(image)
                 plot_2d_or_3d_image(
-                    data=image.unsqueeze(0),
+                    data=image,
                     step=0,
                     writer=self.writer,
                     frame_dim=-1,
-                    tag=f"{idx}/image"
+                    tag=f"{idx}/image/{idx}"
                 )
                 bboxes = self.scale_function(
                     self.image_size, data["original_size"][0],
@@ -349,11 +349,11 @@ class Trainer:
                 bbox_original[bboxes[0]:bboxes[3], bboxes[1]:bboxes[4],
                               bboxes[2]:bboxes[5]] = 1
                 plot_2d_or_3d_image(
-                    data=bbox_original.unsqueeze(0),
+                    data=bbox_original,
                     step=0,
                     writer=self.writer,
                     frame_dim=-1,
-                    tag=f"{idx}/original"
+                    tag=f"{idx}/original/{idx}"
                 )
                 with open(
                     os.path.join(
@@ -370,11 +370,11 @@ class Trainer:
                                          bbox_tmp[1]:bbox_tmp[4],
                                          bbox_tmp[2]:bbox_tmp[5]] = 1
                             plot_2d_or_3d_image(
-                                data=bbox_predict.unsqueeze(0),
+                                data=bbox_predict,
                                 step=0,
                                 writer=self.writer,
                                 frame_dim=-1,
-                                tag=f"{idx}/predict"
+                                tag=f"{idx}/predict/{idx}"
                             )
                         print(*bbox_tmp, bbox[6], bbox[7], file=f, flush=True)
 
