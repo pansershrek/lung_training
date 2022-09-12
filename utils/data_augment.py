@@ -50,8 +50,8 @@ class RandomCrop(object):
 
             img = img[:, crop_ymin : crop_ymax, crop_xmin : crop_xmax]
 
-            bboxes[:, [1, 4]] = bboxes[:, [1, 4]] - crop_xmin
-            bboxes[:, [2, 5]] = bboxes[:, [2, 5]] - crop_ymin
+            bboxes[:, [1, 4]] = bboxes[:, [1, 4]] - crop_ymin
+            bboxes[:, [2, 5]] = bboxes[:, [2, 5]] - crop_xmin
         return img, bboxes
 
 
