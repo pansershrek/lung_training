@@ -145,8 +145,8 @@ class PancreasDataset(Dataset):
 
     def __data_aug(self, img, bboxes):
         img, bboxes = dataAug.RandomHorizontalFilp()(np.copy(img), np.copy(bboxes))
-        img, bboxes = dataAug.RandomCrop()(np.copy(img), np.copy(bboxes))
-        img, bboxes = dataAug.RandomAffine()(np.copy(img), np.copy(bboxes))
+        #img, bboxes = dataAug.RandomCrop()(np.copy(img), np.copy(bboxes))
+        #img, bboxes = dataAug.RandomAffine()(np.copy(img), np.copy(bboxes))
 
         return img, bboxes
 
