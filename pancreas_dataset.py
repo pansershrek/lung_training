@@ -159,7 +159,7 @@ class PancreasDataset(Dataset):
         img, bboxes = dataAug.RandomVerticalFlip()(
             np.copy(img), np.copy(bboxes)
         )
-        img, bboxes = dataAug.RandomCrop()(np.copy(img), np.copy(bboxes))
+        #img, bboxes = dataAug.RandomCrop()(np.copy(img), np.copy(bboxes))
         #img, bboxes = dataAug.RandomAffine()(np.copy(img), np.copy(bboxes))
 
         return img, bboxes
