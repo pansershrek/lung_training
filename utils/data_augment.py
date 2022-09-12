@@ -4,7 +4,7 @@ import random
 import numpy as np
 
 
-class RandomHorizontalFilp(object):
+class RandomHorizontalFlip(object):
     def __init__(self, p=0.5):
         self.p = p
 
@@ -13,7 +13,19 @@ class RandomHorizontalFilp(object):
             _, w_img, _ = img.shape
             # img = np.fliplr(img)
             img = img[:, ::-1, :]
-            bboxes[:, [0, 2]] = w_img - bboxes[:, [2, 0]]
+            bboxes[:, [1, 4]] = w_img - bboxes[:, [4, 1]]
+        return img, bboxes
+
+class RandomVerticalFlip(object):
+    def __init__(self, p=0.5):
+        self.p = p
+
+    def __call__(self, img, bboxes):
+        if random.random() < self.p:
+            _, _,  h_img = img.shape
+            # img = np.fliplr(img)
+            img = img[:, :, ::-1]
+            bboxes[:, [2, 5]] = w_img - bboxes[:, [5, 2]]
         return img, bboxes
 
 
