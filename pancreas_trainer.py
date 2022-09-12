@@ -14,6 +14,7 @@ from model.loss.yolo_loss import YoloV4Loss
 from utils import cosine_lr_scheduler
 from utils_ABUS.misc import build_threshold
 from utils_ABUS.postprocess import centroid_distance, eval_precision_recall_by_dist, eval_precision_recall
+import utils_ccy as utils
 from utils.tools import nms, xyzwhd2xyzxyz
 
 
@@ -326,6 +327,12 @@ class Trainer:
                 bboxes_prd, box_raw_data, bboxes_prd_no_nms = self._get_bbox(
                     data["images"]
                 )
+                image = utils.resize_without_pad(
+                    data["images"][0],
+                    data["original_size"][0],
+                    "trilinear",
+                    align_corners=False
+                )
                 plot_2d_or_3d_image(
                     data=data["images"][0],
                     step=idx,
@@ -333,10 +340,14 @@ class Trainer:
                     frame_dim=-1,
                     tag="image"
                 )
+                bboxes = self.scale_function(
+                    self.image_size, data["original_size"][0],
+                    data["bboxes"][0][:6]
+                )
+                bboxes[bboxes != 0] = 1
                 bbox_original = torch.zeros_like(data["images"][0])
-                bbox_original[data["bboxes"][0]:data["bboxes"][3],
-                              data["bboxes"][1]:data["bboxes"][4],
-                              data["bboxes"][2]:data["bboxes"][5]] = 1
+                bbox_original[bboxes[0]:bboxes[3], bboxes[1]:bboxes[4],
+                              bboxes[2]:bboxes[5]] = 1
                 plot_2d_or_3d_image(
                     data=bbox_original,
                     step=idx,
