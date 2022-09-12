@@ -337,9 +337,9 @@ class Trainer:
                 plot_2d_or_3d_image(
                     data=image.unsqueeze(0),
                     step=1,
-                    max_channels=4,
+                    frame_dim=-1,
                     writer=self.writer,
-                    tag=f"{idx}/image/{idx}"
+                    tag=f"image_{idx}"
                 )
                 bboxes = self.scale_function(
                     self.image_size, data["original_size"][0],
@@ -351,9 +351,9 @@ class Trainer:
                 plot_2d_or_3d_image(
                     data=bbox_original.unsqueeze(0),
                     step=1,
-                    max_channels=4,
+                    frame_dim=-1,
                     writer=self.writer,
-                    tag=f"{idx}/original/{idx}"
+                    tag=f"original_{idx}"
                 )
                 with open(
                     os.path.join(
@@ -372,9 +372,9 @@ class Trainer:
                             plot_2d_or_3d_image(
                                 data=bbox_predict.unsqueeze(0),
                                 step=1,
-                                max_channels=4,
+                                frame_dim=-1,
                                 writer=self.writer,
-                                tag=f"{idx}/predict/{idx}"
+                                tag=f"predict_{idx}"
                             )
                         print(*bbox_tmp, bbox[6], bbox[7], file=f, flush=True)
 
