@@ -334,26 +334,25 @@ class Trainer:
                     align_corners=False
                 )
                 plot_2d_or_3d_image(
-                    data=data["images"][0],
+                    data=image.view(1, *image.shape),
                     step=0,
                     writer=self.writer,
                     frame_dim=-1,
-                    tag=f"image/{idx}"
+                    tag=f"{idx}/image"
                 )
                 bboxes = self.scale_function(
                     self.image_size, data["original_size"][0],
                     data["bboxes"][0][:6]
                 )
-                bboxes[bboxes != 0] = 1
                 bbox_original = torch.zeros_like(data["images"][0])
                 bbox_original[bboxes[0]:bboxes[3], bboxes[1]:bboxes[4],
                               bboxes[2]:bboxes[5]] = 1
                 plot_2d_or_3d_image(
-                    data=bbox_original,
+                    data=bbox_original.view(1, *bbox_original.shape),
                     step=0,
                     writer=self.writer,
                     frame_dim=-1,
-                    tag=f"original/{idx}"
+                    tag=f"{idx}/original"
                 )
                 with open(
                     os.path.join(
@@ -370,11 +369,11 @@ class Trainer:
                                          bbox_tmp[1]:bbox_tmp[4],
                                          bbox_tmp[2]:bbox_tmp[5]] = 1
                             plot_2d_or_3d_image(
-                                data=bbox_predict,
+                                data=bbox_predict.view(1, *bbox_predict.shape),
                                 step=0,
                                 writer=self.writer,
                                 frame_dim=-1,
-                                tag=f"predict/{idx}"
+                                tag=f"{idx}/predict"
                             )
                         print(*bbox_tmp, bbox[6], bbox[7], file=f, flush=True)
 
