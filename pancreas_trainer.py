@@ -3,6 +3,7 @@ from copy import deepcopy
 import random
 
 from apex import amp
+from monai.visualize import plot_2d_or_3d_image
 import numpy as np
 import torch
 import torch.optim as optim
@@ -325,14 +326,45 @@ class Trainer:
                 bboxes_prd, box_raw_data, bboxes_prd_no_nms = self._get_bbox(
                     data["images"]
                 )
+                plot_2d_or_3d_image(
+                    data=data["images"][0],
+                    step=idx,
+                    writer=self.writer,
+                    frame_dim=-1,
+                    tag="image"
+                )
+                bbox_original = torch.zeros_like(data["images"][0])
+                bbox_original[data["bboxes"][0]:data["bboxes"][3],
+                              data["bboxes"][1]:data["bboxes"][4],
+                              data["bboxes"][2]:data["bboxes"][5]] = 1
+                plot_2d_or_3d_image(
+                    data=bbox_original,
+                    step=idx,
+                    writer=self.writer,
+                    frame_dim=-1,
+                    tag="original"
+                )
                 with open(
-                    os.path.join(self.inference_to_store, data["names"][0]),
-                    "w"
+                    os.path.join(
+                        self.inference_to_store, f'pred_{data["names"][0]}'
+                    ), "w"
                 ) as f:
-                    for bbox in bboxes_prd:
+                    for idx_bbox, bbox in enumerate(bboxes_prd):
                         bbox_tmp = self.scale_function(
                             self.image_size, data["original_size"][0], bbox[:6]
                         )
+                        if idx_bbox == 0:
+                            bbox_predict = torch.zeros_like(data["images"][0])
+                            bbox_predict[bbox_tmp[0]:bbox_tmp[3],
+                                         bbox_tmp[1]:bbox_tmp[4],
+                                         bbox_tmp[2]:bbox_tmp[5]] = 1
+                            plot_2d_or_3d_image(
+                                data=bbox_predict,
+                                step=idx,
+                                writer=self.writer,
+                                frame_dim=-1,
+                                tag="predict"
+                            )
                         print(*bbox_tmp, bbox[6], bbox[7], file=f, flush=True)
 
     def _get_bbox(self, image):
