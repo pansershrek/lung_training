@@ -335,10 +335,10 @@ class Trainer:
                 )
                 plot_2d_or_3d_image(
                     data=data["images"][0],
-                    step=idx,
+                    step=0,
                     writer=self.writer,
                     frame_dim=-1,
-                    tag="image"
+                    tag=f"image/{idx}"
                 )
                 bboxes = self.scale_function(
                     self.image_size, data["original_size"][0],
@@ -350,10 +350,10 @@ class Trainer:
                               bboxes[2]:bboxes[5]] = 1
                 plot_2d_or_3d_image(
                     data=bbox_original,
-                    step=idx,
+                    step=0,
                     writer=self.writer,
                     frame_dim=-1,
-                    tag="original"
+                    tag=f"original/{idx}"
                 )
                 with open(
                     os.path.join(
@@ -371,10 +371,10 @@ class Trainer:
                                          bbox_tmp[2]:bbox_tmp[5]] = 1
                             plot_2d_or_3d_image(
                                 data=bbox_predict,
-                                step=idx,
+                                step=0,
                                 writer=self.writer,
                                 frame_dim=-1,
-                                tag="predict"
+                                tag=f"predict/{idx}"
                             )
                         print(*bbox_tmp, bbox[6], bbox[7], file=f, flush=True)
 
