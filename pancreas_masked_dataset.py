@@ -79,24 +79,37 @@ class PancreasMaskedDataset(Dataset):
     def __getitem__(self, idx):
         output, exist = self.cacher.get(idx)
         if exist:
-            image, label = exist
+            data_dict = exist
+            #image, label = exist
         else:
             image_name = self.meta_data[idx]["name"].replace(
                 "pancreas_mask", "image"
             )
-            image = nib.load(os.path.join(self.images_dir, image_name)).get_fdata()
-            label = nib.load(
+            #image = nib.load(os.path.join(self.images_dir, image_name)).get_fdata()
+            #label = nib.load(
+            #    os.path.join(self.labels_dir, self.meta_data[idx]["name"])
+            #).get_fdata()
+            data_dict = {
+                "image": os.path.join(self.images_dir, image_name),
+                label:
                 os.path.join(self.labels_dir, self.meta_data[idx]["name"])
-            ).get_fdata()
-        original_size = image.shape
+            }
+            loader = LoadImage(dtype=np.float32, image_only=True)
+            data_dict = loader(data_dict)
+            self.cacher.set(idx, data_dict)
+
+        original_size = data_dict["image"].shape
 
         if not self.validate:
             ensure_channel_first = EnsureChannelFirstd(keys=["image", "label"])
-            data_dict = {"image": image, label: "label"}
+            #data_dict = {"image": image, label: "label"}
             data_dict = ensure_channel_first(data_dict)
             data_dict = self.__data_aug_3d(data_dict)
             image = torch.tensor(data_dict["image"]).squeeze(0)
             label = torch.tensor(data_dict["label"]).squeeze(0)
+        else:
+            image = torch.tensor(data_dict["image"])
+            label = torch.tensor(data_dict["label"])
 
         bboxes = self._create_bbox(label)
 
@@ -142,7 +155,7 @@ class PancreasMaskedDataset(Dataset):
             "eval_flag": torch.FloatTensor(eval_flag),
         }
 
-        self.cacher.set(idx, output)
+        #self.cacher.set(idx, output)
         return output
 
     def _create_bbox(self, label):
@@ -160,7 +173,7 @@ class PancreasMaskedDataset(Dataset):
             label_slice[label_slice != 0] = 1
             label_slice = torch.IntTensor(label_slice)
             if 1 in label_slice:
-                bbox = self,_masks_to_boxes(
+                bbox = self, _masks_to_boxes(
                     label_slice.view(
                         1, label_slice.shape[0], label_slice.shape[1]
                     )
