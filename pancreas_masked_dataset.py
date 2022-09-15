@@ -173,7 +173,7 @@ class PancreasMaskedDataset(Dataset):
             label_slice[label_slice != 0] = 1
             label_slice = torch.tensor(label_slice).int()
             if 1 in label_slice:
-                bbox = self, _masks_to_boxes(
+                bbox = self._masks_to_boxes(
                     label_slice.view(
                         1, label_slice.shape[0], label_slice.shape[1]
                     )
