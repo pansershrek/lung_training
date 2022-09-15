@@ -105,11 +105,11 @@ class PancreasMaskedDataset(Dataset):
             #data_dict = {"image": image, label: "label"}
             data_dict = ensure_channel_first(data_dict)
             data_dict = self.__data_aug_3d(data_dict)
-            image = torch.tensor(data_dict["image"]).squeeze(0)
-            label = torch.tensor(data_dict["label"]).squeeze(0)
+            image = data_dict["image"].squeeze(0)
+            label = data_dict["label"].squeeze(0)
         else:
-            image = torch.tensor(data_dict["image"])
-            label = torch.tensor(data_dict["label"])
+            image = data_dict["image"]
+            label = data_dict["label"]
 
         bboxes = self._create_bbox(label)
 
@@ -124,7 +124,7 @@ class PancreasMaskedDataset(Dataset):
             else:
                 bboxes = self.scale_bbox(image.shape, self.image_size, bboxes)
         image = utils.resize_without_pad(
-            image, self.image_size, "trilinear", align_corners=False
+            image.numpy(), self.image_size, "trilinear", align_corners=False
         )
         label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = (
             [], [], [], [], [], []
@@ -171,7 +171,7 @@ class PancreasMaskedDataset(Dataset):
         ]
         for idx, label_slice in enumerate(label):
             label_slice[label_slice != 0] = 1
-            label_slice = torch.tensor(label_slice).int()
+            label_slice = label_slice.int()
             if 1 in label_slice:
                 bbox = self._masks_to_boxes(
                     label_slice.view(
