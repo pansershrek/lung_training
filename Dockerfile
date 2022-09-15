@@ -7,9 +7,6 @@ ENV TZ=Europe
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone; \
     apt-get update; apt-get install ffmpeg libsm6 libxext6 -y ;apt install -yq vim git;
 
-RUN apt-get update
-RUN apt-get install ffmpeg libsm6 libxext6  -y
-
 RUN git clone https://github.com/NVIDIA/apex; pip install -v --no-cache-dir apex;
 
 

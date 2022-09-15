@@ -6,7 +6,7 @@ import nibabel as nib
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-from torchvision.ops import masks_to_boxes
+#from torchvision.ops import masks_to_boxes
 from monai.transforms import (
     EnsureChannelFirstd,
     LoadImage,
@@ -159,7 +159,7 @@ class PancreasMaskedDataset(Dataset):
             label_slice[label_slice != 0] = 1
             label_slice = torch.IntTensor(label_slice)
             if 1 in label_slice:
-                bbox = masks_to_boxes(
+                bbox = self,_masks_to_boxes(
                     label_slice.view(
                         1, label_slice.shape[0], label_slice.shape[1]
                     )
@@ -172,6 +172,23 @@ class PancreasMaskedDataset(Dataset):
                 bbox_3d[4] = max(bbox_3d[4], bbox[2])
                 bbox_3d[5] = max(bbox_3d[5], bbox[3])
         return bbox_3d
+
+    def _masks_to_boxes(self, masks):
+        n = masks.shape[0]
+
+        bounding_boxes = torch.zeros(
+            (n, 4), device=masks.device, dtype=torch.float
+        )
+
+        for index, mask in enumerate(masks):
+            y, x = torch.where(mask != 0)
+
+            bounding_boxes[index, 0] = torch.min(x)
+            bounding_boxes[index, 1] = torch.min(y)
+            bounding_boxes[index, 2] = torch.max(x)
+            bounding_boxes[index, 3] = torch.max(y)
+
+        return bounding_boxes
 
     def __data_aug_3d(self, data_dict):
         spatial_size = data_dict["image"].shape[1:]
