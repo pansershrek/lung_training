@@ -64,7 +64,7 @@ def main():
     )
     parser.add_argument(
         "--opt-level",
-        default="O1",
+        default="O0",
         help=(
             "Model optimization level. "
             "There are two options: O0, O1, O2 and O3 (first char is big `o`.)"
