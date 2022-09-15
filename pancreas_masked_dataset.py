@@ -46,10 +46,10 @@ class PancreasMaskedDataset(Dataset):
         for file in os.listdir(self.labels_dir):
             self.meta_data[len(self.meta_data)] = {
                 "name": file,
-                "class": (1),  # Background - 0, pancrease - 1
+                "class": 1,  # Background - 0, pancrease - 1
                 #"bbox": data[1:]  # BBox format is [z1,y1,x1,z2,y2,x2]
             }
-            self.classes.add(data[0])
+            self.classes.add(1)
 
         self.num_classes = 2
 
