@@ -123,8 +123,9 @@ class PancreasMaskedDataset(Dataset):
                 bboxes = self.scale_bbox(image.shape, self.image_size, bboxes)
             else:
                 bboxes = self.scale_bbox(image.shape, self.image_size, bboxes)
+        image = np.copy(image)
         image = utils.resize_without_pad(
-            image.numpy(), self.image_size, "trilinear", align_corners=False
+            image, self.image_size, "trilinear", align_corners=False
         )
         label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes = (
             [], [], [], [], [], []
