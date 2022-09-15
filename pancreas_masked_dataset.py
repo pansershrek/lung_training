@@ -79,14 +79,15 @@ class PancreasMaskedDataset(Dataset):
     def __getitem__(self, idx):
         output, exist = self.cacher.get(idx)
         if exist:
-            return output
-        image_name = self.meta_data[idx]["name"].replace(
-            "pancreas_mask", "image"
-        )
-        image = nib.load(os.path.join(self.images_dir, image_name)).get_fdata()
-        label = nib.load(
-            os.path.join(self.labels_dir, self.meta_data[idx]["name"])
-        ).get_fdata()
+            image, label = exist
+        else:
+            image_name = self.meta_data[idx]["name"].replace(
+                "pancreas_mask", "image"
+            )
+            image = nib.load(os.path.join(self.images_dir, image_name)).get_fdata()
+            label = nib.load(
+                os.path.join(self.labels_dir, self.meta_data[idx]["name"])
+            ).get_fdata()
         original_size = image.shape
 
         if not self.validate:
