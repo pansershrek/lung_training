@@ -91,7 +91,7 @@ class PancreasMaskedDataset(Dataset):
             #).get_fdata()
             data_dict = {
                 "image": os.path.join(self.images_dir, image_name),
-                label:
+                "label":
                 os.path.join(self.labels_dir, self.meta_data[idx]["name"])
             }
             loader = LoadImage(dtype=np.float32, image_only=True)
