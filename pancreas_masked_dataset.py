@@ -1,16 +1,28 @@
 import os
+import math
+import random
 
 import nibabel as nib
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from torchvision.ops import masks_to_boxes
+from monai.transforms import (
+    EnsureChannelFirstd,
+    LoadImage,
+    LoadImaged,
+    Orientationd,
+    Rand3DElasticd,
+    RandAffined,
+    Spacingd,
+)
 
 import utils.data_augment as dataAug
 import utils.tools as tools
 import utils_ccy as utils
 
 
-class PancreasDataset(Dataset):
+class PancreasMaskedDataset(Dataset):
 
     def __init__(
         self,
@@ -32,29 +44,12 @@ class PancreasDataset(Dataset):
         self.image_size = image_size
 
         for file in os.listdir(self.labels_dir):
-            with open(os.path.join(self.labels_dir, file), "r") as f:
-                data = [int(x) for x in f.read().strip().split(" ")]
-                self.meta_data[len(self.meta_data)] = {
-                    "name": file,
-                    "class": (
-                        data[0]
-                    ),  # Background - 0, pancrease - 1
-                    "bbox": data[1:]  # BBox format is [z1,y1,x1,z2,y2,x2]
-                }
-                self.classes.add(data[0])
-        for file in os.listdir(self.images_dir):
-            name = file.replace("nii.gz", "txt")
-            flag = False
-            for value in self.meta_data.values():
-                if name == value["name"]:
-                    flag = True
-                    break
-            if not flag:
-                self.meta_data[len(self.meta_data)] = {
-                    "name": name,
-                    "class": -1,
-                    "bbox": None,
-                }
+            self.meta_data[len(self.meta_data)] = {
+                "name": file,
+                "class": (1),  # Background - 0, pancrease - 1
+                #"bbox": data[1:]  # BBox format is [z1,y1,x1,z2,y2,x2]
+            }
+            self.classes.add(data[0])
 
         self.num_classes = 2
 
@@ -81,42 +76,39 @@ class PancreasDataset(Dataset):
                 round(float(x2) * float(x_scale))
             ]
 
-    def _zyxzyx2zyxdhw_normalize(self, bbox):
-        z = (bbox[3] + bbox[0]) / 2.0
-        y = (bbox[4] + bbox[1]) / 2.0
-        x = (bbox[5] + bbox[2]) / 2.0
-        d = (bbox[3] - bbox[0])
-        h = (bbox[4] - bbox[1])
-        w = (bbox[5] - bbox[2])
-        return [
-            z / self.image_size[0],
-            y / self.image_size[1],
-            x / self.image_size[2],
-            d / self.image_size[0],
-            h / self.image_size[1],
-            w / self.image_size[2],
-        ]
-
     def __getitem__(self, idx):
         output, exist = self.cacher.get(idx)
         if exist:
             return output
-        image_name = self.meta_data[idx]["name"].replace("txt", "nii.gz")
+        image_name = self.meta_data[idx]["name"].replace(
+            "pancreas_mask", "image"
+        )
         image = nib.load(os.path.join(self.images_dir, image_name)).get_fdata()
+        label = nib.load(
+            os.path.join(self.labels_dir, self.meta_data[idx]["name"])
+        ).get_fdata()
         original_size = image.shape
-        bboxes = None
-        if self.meta_data[idx]["bbox"] is not None:
+
+        if not self.validate:
+            ensure_channel_first = EnsureChannelFirstd(keys=["image", "label"])
+            data_dict = {"image": image, label: "label"}
+            data_dict = ensure_channel_first(data_dict)
+            data_dict = self.__data_aug_3d(data_dict)
+            image = torch.tensor(data_dict["image"]).squeeze(0)
+            label = torch.tensor(data_dict["label"]).squeeze(0)
+
+        bboxes = self._create_bbox(label)
+
+        if bboxes is not None:
             if not self.validate:
                 image, bboxes = self.__data_aug(
                     image,
-                    torch.tensor(self.meta_data[idx]["bbox"]).unsqueeze(0)
+                    torch.tensor(bboxes).unsqueeze(0)
                 )
                 bboxes = [x for x in bboxes[0]]
                 bboxes = self.scale_bbox(image.shape, self.image_size, bboxes)
             else:
-                bboxes = self.scale_bbox(
-                    image.shape, self.image_size, self.meta_data[idx]["bbox"]
-                )
+                bboxes = self.scale_bbox(image.shape, self.image_size, bboxes)
         image = utils.resize_without_pad(
             image, self.image_size, "trilinear", align_corners=False
         )
@@ -151,6 +143,68 @@ class PancreasDataset(Dataset):
 
         self.cacher.set(idx, output)
         return output
+
+    def _create_bbox(self, label):
+        bbox_3d = [
+            # Format channel min, height min, width min,
+            # channel max, height max, width max.
+            math.inf,
+            math.inf,
+            math.inf,
+            -math.inf,
+            -math.inf,
+            -math.inf
+        ]
+        for idx, label_slice in enumerate(label):
+            label_slice[label_slice != 0] = 1
+            label_slice = torch.IntTensor(label_slice)
+            if 1 in label_slice:
+                bbox = masks_to_boxes(
+                    label_slice.view(
+                        1, label_slice.shape[0], label_slice.shape[1]
+                    )
+                )
+                bbox = bbox.int().tolist()[0]
+                bbox_3d[0] = min(bbox_3d[0], idx)
+                bbox_3d[3] = max(bbox_3d[3], idx)
+                bbox_3d[1] = min(bbox_3d[1], bbox[0])
+                bbox_3d[2] = min(bbox_3d[2], bbox[1])
+                bbox_3d[4] = max(bbox_3d[4], bbox[2])
+                bbox_3d[5] = max(bbox_3d[5], bbox[3])
+        return bbox_3d
+
+    def __data_aug_3d(self, data_dict):
+        spatial_size = data_dict["image"].shape[1:]
+        if random.random() < 0.5:
+            rand_affine = RandAffined(
+                keys=["image", "label"],
+                mode=("bilinear", "nearest"),
+                prob=1.0,
+                spatial_size=spatial_size,
+                translate_range=(0, 0, 0),
+                rotate_range=(np.pi / 36, np.pi / 36, np.pi / 4),
+                scale_range=(0.15, 0.15, 0.15),
+                padding_mode="border",
+            )
+            #rand_affine.set_random_state(seed=1717)
+            data_dict = rand_affine(data_dict)
+        if random.random() < 0.5:
+            rand_elastic = Rand3DElasticd(
+                keys=["image", "label"],
+                mode=("bilinear", "nearest"),
+                prob=1.0,
+                sigma_range=(5, 8),
+                magnitude_range=(100, 200),
+                spatial_size=spatial_size,
+                translate_range=(0, 0, 0),
+                rotate_range=(np.pi / 36, np.pi / 36, np.pi),
+                scale_range=(0.15, 0.15, 0.15),
+                padding_mode="border",
+            )
+            #rand_elastic.set_random_state(seed=1717)
+            data_dict = rand_elastic(data_dict)
+
+        return data_dict
 
     def __data_aug(self, img, bboxes):
         img, bboxes = dataAug.RandomHorizontalFlip()(

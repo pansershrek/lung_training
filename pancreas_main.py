@@ -5,6 +5,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from utils.log import Logger
 from pancreas_dataset import PancreasDataset
+from pancreas_masked_dataset import PancreasMaskedDataset
 from pancreas_trainer import Trainer
 
 
@@ -71,7 +72,7 @@ def main():
     )
     args = parser.parse_args()
 
-    train_dataset = PancreasDataset(
+    train_dataset = PancreasMaskedDataset(
         args.images_path_train, args.bbox_path_train
     )
     val_dataset = PancreasDataset(

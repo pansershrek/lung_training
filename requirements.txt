@@ -8,4 +8,5 @@ pycocotools
 nibabel==4.0.1
 pydicom
 monai
+torchvision>=0.8.1
 #tensorboard-plugin-3d
