@@ -100,9 +100,11 @@ class PancreasDataset(Dataset):
     def __getitem__(self, idx):
         output, exist = self.cacher.get(idx)
         if exist:
-            return output
-        image_name = self.meta_data[idx]["name"].replace("txt", "nii.gz")
-        image = nib.load(os.path.join(self.images_dir, image_name)).get_fdata()
+            image = exist
+        else:
+            image_name = self.meta_data[idx]["name"].replace("txt", "nii.gz")
+            image = nib.load(os.path.join(self.images_dir, image_name)).get_fdata()
+            self.cacher.set(idx, image)
         original_size = image.shape
         bboxes = None
         if self.meta_data[idx]["bbox"] is not None:
@@ -149,7 +151,6 @@ class PancreasDataset(Dataset):
             "eval_flag": torch.FloatTensor(eval_flag),
         }
 
-        self.cacher.set(idx, output)
         return output
 
     def __data_aug(self, img, bboxes):
