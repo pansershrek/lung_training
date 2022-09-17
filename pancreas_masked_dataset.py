@@ -114,6 +114,11 @@ class PancreasMaskedDataset(Dataset):
         image = data_dict["image"]
         label = data_dict["label"]
 
+        # For mdc
+        if not self.validate:
+            image = torch.permute(image, (2, 0, 1))
+            label = torch.permute(image, (2, 0, 1))
+
         bboxes = self._create_bbox(label)
 
         if bboxes is not None:
@@ -197,7 +202,7 @@ class PancreasMaskedDataset(Dataset):
         )
 
         for index, mask in enumerate(masks):
-            y, x = torch.where(mask != 0)
+            x, y = torch.where(mask != 0)
 
             bounding_boxes[index, 0] = torch.min(x)
             bounding_boxes[index, 1] = torch.min(y)
