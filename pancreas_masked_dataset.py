@@ -120,9 +120,7 @@ class PancreasMaskedDataset(Dataset):
                     torch.tensor(bboxes).unsqueeze(0)
                 )
                 bboxes = [x for x in bboxes[0]]
-                bboxes = self.scale_bbox(image.shape, self.image_size, bboxes)
-            else:
-                bboxes = self.scale_bbox(image.shape, self.image_size, bboxes)
+            bboxes = self.scale_bbox(image.shape, self.image_size, bboxes)
         image = np.copy(image)
         image = utils.resize_without_pad(
             image, self.image_size, "trilinear", align_corners=False

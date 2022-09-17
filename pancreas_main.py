@@ -47,7 +47,7 @@ def main():
         help="Path to store inference bboxes"
     )
     parser.add_argument("--epochs", default=100, help="Epochs number")
-    parser.add_argument("--batch-size", default=16, help="Batch size")
+    parser.add_argument("--batch-size", default=8, help="Batch size")
     parser.add_argument("--device", default="cuda:0", help="Device")
     parser.add_argument(
         "--log-path", default="/pancreas/logs", help="Path for logs"
@@ -72,10 +72,10 @@ def main():
     )
     args = parser.parse_args()
 
-    train_dataset = PancreasDataset(
+    train_dataset = PancreasMaskedDataset(
         args.images_path_train, args.bbox_path_train
     )
-    val_dataset = PancreasDataset(
+    val_dataset = PancreasMaskedDataset(
         args.images_path_val, args.bbox_path_val, validate=True
     )
     inference_dataset = PancreasDataset(
