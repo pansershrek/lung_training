@@ -111,8 +111,8 @@ class PancreasMaskedDataset(Dataset):
         #else:
         #    image = data_dict["image"]
         #    label = data_dict["label"]
-        image = data_dict["image"]
-        label = data_dict["label"]
+        image = torch.tensor(data_dict["image"])
+        label = torch.tensor(data_dict["label"])
 
         # For mdc
         if not self.validate:
