@@ -75,7 +75,7 @@ def main():
     train_dataset = PancreasMaskedDataset(
         args.images_path_train, args.bbox_path_train
     )
-    val_dataset = PancreasMaskedDataset(
+    val_dataset = PancreasDataset(
         args.images_path_val, args.bbox_path_val, validate=True
     )
     inference_dataset = PancreasDataset(

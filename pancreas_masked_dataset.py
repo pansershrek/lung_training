@@ -79,7 +79,8 @@ class PancreasMaskedDataset(Dataset):
     def __getitem__(self, idx):
         output, exist = self.cacher.get(idx)
         if exist:
-            data_dict = exist
+            return output
+            #data_dict = exist
             #image, label = exist
         else:
             image_name = self.meta_data[idx]["name"].replace(
@@ -96,30 +97,32 @@ class PancreasMaskedDataset(Dataset):
             }
             loader = LoadImaged(keys=("image", "label"), image_only=False)
             data_dict = loader(data_dict)
-            self.cacher.set(idx, data_dict)
+            #self.cacher.set(idx, data_dict)
 
         original_size = data_dict["image"].shape
 
-        if not self.validate:
-            ensure_channel_first = EnsureChannelFirstd(keys=["image", "label"])
-            #data_dict = {"image": image, label: "label"}
-            data_dict = ensure_channel_first(data_dict)
-            data_dict = self.__data_aug_3d(data_dict)
-            image = data_dict["image"].squeeze(0)
-            label = data_dict["label"].squeeze(0)
-        else:
-            image = data_dict["image"]
-            label = data_dict["label"]
+        #if not self.validate:
+        #    ensure_channel_first = EnsureChannelFirstd(keys=["image", "label"])
+        #    data_dict = {"image": image, label: "label"}
+        #    data_dict = ensure_channel_first(data_dict)
+        #    data_dict = self.__data_aug_3d(data_dict)
+        #    image = data_dict["image"].squeeze(0)
+        #    label = data_dict["label"].squeeze(0)
+        #else:
+        #    image = data_dict["image"]
+        #    label = data_dict["label"]
+        image = data_dict["image"]
+        label = data_dict["label"]
 
         bboxes = self._create_bbox(label)
 
         if bboxes is not None:
-            if not self.validate:
-                image, bboxes = self.__data_aug(
-                    image,
-                    torch.tensor(bboxes).unsqueeze(0)
-                )
-                bboxes = [x for x in bboxes[0]]
+            #if not self.validate:
+            #    image, bboxes = self.__data_aug(
+            #        image,
+            #        torch.tensor(bboxes).unsqueeze(0)
+            #    )
+            #    bboxes = [x for x in bboxes[0]]
             bboxes = self.scale_bbox(image.shape, self.image_size, bboxes)
         image = np.copy(image)
         image = utils.resize_without_pad(
@@ -154,7 +157,7 @@ class PancreasMaskedDataset(Dataset):
             "eval_flag": torch.FloatTensor(eval_flag),
         }
 
-        #self.cacher.set(idx, output)
+        self.cacher.set(idx, output)
         return output
 
     def _create_bbox(self, label):

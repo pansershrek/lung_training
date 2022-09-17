@@ -100,7 +100,7 @@ class PancreasDataset(Dataset):
     def __getitem__(self, idx):
         output, exist = self.cacher.get(idx)
         if exist:
-            image = exist
+            image = output
         else:
             image_name = self.meta_data[idx]["name"].replace("txt", "nii.gz")
             image = nib.load(os.path.join(self.images_dir, image_name)).get_fdata()
