@@ -116,8 +116,8 @@ class PancreasMaskedDataset(Dataset):
 
         # For mdc
         if not self.validate:
-            image = image.permute(image, (2, 0, 1))
-            label = label.permute(label, (2, 0, 1))
+            image = image.permute((2, 0, 1))
+            label = label.permute((2, 0, 1))
 
         bboxes = self._create_bbox(label)
 
