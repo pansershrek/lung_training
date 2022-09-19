@@ -80,8 +80,6 @@ class PancreasMaskedDataset(Dataset):
         output, exist = self.cacher.get(idx)
         if exist:
             return output
-            #data_dict = exist
-            #image, label = exist
         else:
             image_name = self.meta_data[idx]["name"].replace(
                 "pancreas_mask", "image"
@@ -251,8 +249,6 @@ class PancreasMaskedDataset(Dataset):
         img, bboxes = dataAug.RandomVerticalFlip()(
             np.copy(img), np.copy(bboxes)
         )
-        #img, bboxes = dataAug.RandomCrop()(np.copy(img), np.copy(bboxes))
-        #img, bboxes = dataAug.RandomAffine()(np.copy(img), np.copy(bboxes))
 
         return img, bboxes
 
