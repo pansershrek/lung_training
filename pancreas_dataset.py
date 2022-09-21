@@ -81,22 +81,6 @@ class PancreasDataset(Dataset):
                 round(float(x2) * float(x_scale))
             ]
 
-    def _zyxzyx2zyxdhw_normalize(self, bbox):
-        z = (bbox[3] + bbox[0]) / 2.0
-        y = (bbox[4] + bbox[1]) / 2.0
-        x = (bbox[5] + bbox[2]) / 2.0
-        d = (bbox[3] - bbox[0])
-        h = (bbox[4] - bbox[1])
-        w = (bbox[5] - bbox[2])
-        return [
-            z / self.image_size[0],
-            y / self.image_size[1],
-            x / self.image_size[2],
-            d / self.image_size[0],
-            h / self.image_size[1],
-            w / self.image_size[2],
-        ]
-
     def __getitem__(self, idx):
         output, exist = self.cacher.get(idx)
         if exist:

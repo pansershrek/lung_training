@@ -113,9 +113,10 @@ class PancreasMaskedDataset(Dataset):
         label = torch.tensor(data_dict["label"])
 
         # For mdc  ???
-        if not self.validate:
-            image = image.permute((2, 0, 1))
-            label = label.permute((2, 0, 1))
+        #if not self.validate:
+        # For mdc
+        image = image.permute((2, 0, 1))
+        label = label.permute((2, 0, 1))
 
         bboxes = self._create_bbox(label)
 
