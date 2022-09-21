@@ -30,7 +30,7 @@ class PancreasMaskedDataset(Dataset):
         labels_dir,
         validate=False,
         image_size=(128, 128, 128),
-        cache_size=40
+        cache_size=300
     ):
         self.images_dir = images_dir
         self.labels_dir = labels_dir
