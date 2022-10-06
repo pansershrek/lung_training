@@ -334,27 +334,27 @@ class Trainer:
                     align_corners=False
                 )
                 image = torch.tensor(image)
-                plot_2d_or_3d_image(
-                    data=image.unsqueeze(0),
-                    step=1,
-                    frame_dim=-1,
-                    writer=self.writer,
-                    tag=f"image_{idx}"
-                )
-                bboxes = self.scale_function(
-                    self.image_size, data["original_size"][0],
-                    data["bboxes"][0][:6]
-                )
-                bbox_original = torch.zeros_like(image)
-                bbox_original[bboxes[0]:bboxes[3], bboxes[1]:bboxes[4],
-                              bboxes[2]:bboxes[5]] = 1
-                plot_2d_or_3d_image(
-                    data=bbox_original.unsqueeze(0),
-                    step=1,
-                    frame_dim=-1,
-                    writer=self.writer,
-                    tag=f"original_{idx}"
-                )
+                #plot_2d_or_3d_image(
+                #    data=image.unsqueeze(0),
+                #    step=1,
+                #    frame_dim=-1,
+                #    writer=self.writer,
+                #    tag=f"image_{idx}"
+                #)
+                #bboxes = self.scale_function(
+                #    self.image_size, data["original_size"][0],
+                #    data["bboxes"][0][:6]
+                #)
+                #bbox_original = torch.zeros_like(image)
+                #bbox_original[bboxes[0]:bboxes[3], bboxes[1]:bboxes[4],
+                #              bboxes[2]:bboxes[5]] = 1
+                #plot_2d_or_3d_image(
+                #    data=bbox_original.unsqueeze(0),
+                #    step=1,
+                #    frame_dim=-1,
+                #    writer=self.writer,
+                #    tag=f"original_{idx}"
+                #)
                 with open(
                     os.path.join(
                         self.inference_to_store, f'pred_{data["names"][0]}'
