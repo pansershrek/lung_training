@@ -336,7 +336,8 @@ def CIOU_xyzwhd_torch(boxes1,boxes2):
         alpha = v / (1-ious+v)
 
     cious = ious - center_dis / outer_diagonal_line #( + alpha*v)
-
+    #MY MODIFICATION
+    cious += 1 - inter_area / boxes1_area
     return cious
 
 def IOU_xywh_torch(boxes1,boxes2):
