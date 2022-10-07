@@ -337,8 +337,8 @@ def CIOU_xyzwhd_torch(boxes1,boxes2):
 
     cious = ious - center_dis / outer_diagonal_line #( + alpha*v)
     #MY MODIFICATION
-    kek = -1 + inter_area / boxes1_area # FOR yolo_loss.py, line 190
-    cious += kek
+    #kek = -1 + inter_area / boxes1_area # FOR yolo_loss.py, line 190
+    #cious += kek
     #cious += 1 - inter_area / boxes1_area
     return cious
 
