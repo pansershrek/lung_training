@@ -114,8 +114,8 @@ class PancreasMaskedDataset(Dataset):
 
         # For mdc  ???
         #if not self.validate:
-        #    image = image.permute((2, 0, 1))
-        #    label = label.permute((2, 0, 1))
+        image = image.permute((2, 0, 1))
+        label = label.permute((2, 0, 1))
 
         bboxes = self._create_bbox(label)
 
@@ -158,6 +158,8 @@ class PancreasMaskedDataset(Dataset):
             "lbboxes": torch.FloatTensor(lbboxes),
             "original_size": torch.FloatTensor(original_size),
             "eval_flag": torch.FloatTensor(eval_flag),
+            "label_original": torch.tensor(data_dict["label"]),
+            "image_original": torch.tensor(data_dict["image"]),
         }
 
         self.cacher.set(idx, output)

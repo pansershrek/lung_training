@@ -9,19 +9,19 @@ services:
       #- /home/g-skiba/pancreas_new_data/train/imagesTr:/pancreas/train/imagesTr
       #- /home/g-skiba/pancreas_new_data/train/labelsTr:/pancreas/train/bbox3d
       #- /home/g-skiba/pancreas_new_data/train/bbox3d:/pancreas/train/bbox3d
-      #mdc
-      #- /home/g-skiba/meddec/Task07_Pancreas/imagesTr:/pancreas/train/imagesTr
-      #mdc
-      #- /home/g-skiba/meddec/Task07_Pancreas/labelsTr:/pancreas/train/bbox3d
-      - /home/g-skiba/meddec/portal_img_train_reprep:/pancreas/train/imagesTr
-      - /home/g-skiba/meddec/portal_leb_train_reprep:/pancreas/train/bbox3d
+      mdc
+      - /home/g-skiba/meddec/Task07_Pancreas/imagesTr:/pancreas/train/imagesTr
+      mdc
+      - /home/g-skiba/meddec/Task07_Pancreas/labelsTr:/pancreas/train/bbox3d
+      #- /home/g-skiba/meddec/portal_img_train_reprep:/pancreas/train/imagesTr
+      #- /home/g-skiba/meddec/portal_leb_train_reprep:/pancreas/train/bbox3d
       #- /home/g-skiba/pancreas_new_data/val/imagesTr:/pancreas/val/imagesTr
       #- /home/g-skiba/pancreas_new_data/val/labelsTr:/pancreas/val/bbox3d
       #- /home/g-skiba/pancreas_new_data/val/bbox3d:/pancreas/val/bbox3d
       #mdc
-      - /home/g-skiba/meddec/portal_img_val_reprep:/pancreas/val/imagesTr
+      - /home/g-skiba/meddec/portal_imagesTr:/pancreas/val/imagesTr
       #mdc
-      - /home/g-skiba/meddec/portal_leb_val_reprep:/pancreas/val/bbox3d
+      - /home/g-skiba/meddec/portal_labelsTr:/pancreas/val/bbox3d
       #inference
       - /home/g-skiba/meddec/portal_img_val_reprep:/pancreas/inference/imagesTr
       - /home/g-skiba/meddec/portal_img_inf_reprep:/pancreas/inference/bbox3d
