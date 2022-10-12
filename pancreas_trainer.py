@@ -327,20 +327,20 @@ class Trainer:
                 bboxes_prd, box_raw_data, bboxes_prd_no_nms = self._get_bbox(
                     data["images"]
                 )
-                image = utils.resize_without_pad(
-                    data["images"][0].view(self.image_size).numpy(),
-                    [int(x) for x in data["original_size"][0]],
-                    "trilinear",
-                    align_corners=False
-                )
-                image = torch.tensor(image)
-                bboxes = self.scale_function(
-                    self.image_size, data["original_size"][0],
-                    data["bboxes"][0][:6]
-                )
-                bbox_original = torch.zeros_like(image)
-                bbox_original[bboxes[0]:bboxes[3], bboxes[1]:bboxes[4],
-                              bboxes[2]:bboxes[5]] = 1
+                #image = utils.resize_without_pad(
+                #    data["images"][0].view(self.image_size).numpy(),
+                #    [int(x) for x in data["original_size"][0]],
+                #    "trilinear",
+                #    align_corners=False
+                #)
+                #image = torch.tensor(image)
+                #bboxes = self.scale_function(
+                #    self.image_size, data["original_size"][0],
+                #    data["bboxes"][0][:6]
+                #)
+                #bbox_original = torch.zeros_like(image)
+                #bbox_original[bboxes[0]:bboxes[3], bboxes[1]:bboxes[4],
+                #              bboxes[2]:bboxes[5]] = 1
                 with open(
                     os.path.join(
                         self.inference_to_store, f'pred_{data["names"][0]}'
@@ -351,30 +351,30 @@ class Trainer:
                             self.image_size, data["original_size"][0], bbox[:6]
                         )
                         print(*bbox_tmp, bbox[6], bbox[7], file=f, flush=True)
-                best_bbox = self.scale_function(
-                    self.image_size, data["original_size"][0],
-                    bboxes_prd[0][:6]
-                )
-                image_crop = data["image_original"][best_bbox[0]:best_bbox[3],
-                                                    best_bbox[1]:best_bbox[4],
-                                                    best_bbox[2]:best_bbox[5]]
-                label_crop = data["label_original"][best_bbox[0]:best_bbox[3],
-                                                    best_bbox[1]:best_bbox[4],
-                                                    best_bbox[2]:best_bbox[5]]
-                torch.save(
-                    image_crop,
-                    os.path.join(
-                        self.inference_to_store,
-                        f'image_crop_{data["names"][0]}'
-                    )
-                )
-                torch.save(
-                    label_crop,
-                    os.path.join(
-                        self.inference_to_store,
-                        f'label_crop_{data["names"][0]}'
-                    )
-                )
+                #best_bbox = self.scale_function(
+                #    self.image_size, data["original_size"][0],
+                #    bboxes_prd[0][:6]
+                #)
+                #image_crop = data["image_original"][best_bbox[0]:best_bbox[3],
+                #                                    best_bbox[1]:best_bbox[4],
+                #                                    best_bbox[2]:best_bbox[5]]
+                #label_crop = data["label_original"][best_bbox[0]:best_bbox[3],
+                #                                    best_bbox[1]:best_bbox[4],
+                #                                    best_bbox[2]:best_bbox[5]]
+                #torch.save(
+                #    image_crop,
+                #    os.path.join(
+                #        self.inference_to_store,
+                #        f'image_crop_{data["names"][0]}'
+                #    )
+                #)
+                #torch.save(
+                #    label_crop,
+                #    os.path.join(
+                #        self.inference_to_store,
+                #        f'label_crop_{data["names"][0]}'
+                #    )
+                #)
 
     def _get_bbox(self, image):
         bboxes, box_raw_data = self._predict(image)
