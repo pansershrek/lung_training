@@ -54,12 +54,12 @@ def main():
     )
     parser.add_argument(
         "--mode",
-        default="train",
+        default="inference",
         help="Model mode. There are two options: train and inference"
     )
     parser.add_argument(
         "--inference-model-path",
-        default="/pancreas/checkpoint_save_dir/checkpoint_99.pt",
+        default="/pancreas/checkpoint_save_dir/checkpoint_34.pt",
         help="Path to inference model"
     )
     parser.add_argument(
